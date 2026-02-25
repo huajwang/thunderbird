@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dependabot — Automated dependency updates
+# ─────────────────────────────────────────────────────────────────────────────
+# Keeps GitHub Actions, Python (pip), and Docker base images up to date.
+# Security updates are auto-created; version updates are grouped weekly.
+# ─────────────────────────────────────────────────────────────────────────────
+version: 2
+
+updates:
+  # ── GitHub Actions ──────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - ci
+
+  # ── Python (pip) ────────────────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      python-deps:
+        patterns: ["*"]
+    commit-message:
+      prefix: "build"
+    labels:
+      - dependencies
+      - python
+
+  # ── Docker ──────────────────────────────────────────────────────────────
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build"
+    labels:
+      - dependencies
+      - docker

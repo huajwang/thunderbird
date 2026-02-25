@@ -2,8 +2,27 @@
 # Thunderbird SDK — Continuous Integration (every push + PR)
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# Runs on every push/PR to main.  NOT triggered by tags (release.yml handles
-# those).  Fast feedback loop: lint → build → test.
+# Runs on every push/PR to main/develop.  NOT triggered by tags (release.yml
+# handles those).
+#
+# Performance targets:
+#   • Full CI pass < 10 minutes (cached)
+#   • Incremental rebuild < 3 minutes
+#
+# Caching strategy:
+#   • ccache:      compiler output (80%+ hit rate on incremental)
+#   • pip:         Python package downloads
+#   • apt:         .deb package cache (avoids re-download)
+#   • Docker:      BuildKit GHA layer cache (scoped per variant)
+#
+# Job dependency graph (all independent → max parallelism):
+#
+#   push/PR
+#     ├── build-and-test (3× matrix)
+#     ├── deb-smoke
+#     ├── wheel-smoke
+#     └── docker-smoke  (2× matrix)
+#
 # ─────────────────────────────────────────────────────────────────────────────
 name: CI
 
@@ -18,6 +37,10 @@ on:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+# ── Minimal default permissions ──────────────────────────────────────────────
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
@@ -36,25 +59,52 @@ jobs:
           - os: linux-arm64
             runner: ubuntu-24.04-arm
             build_type: Release
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 200M
+      CCACHE_COMPRESS: "true"
+      CCACHE_COMPRESSLEVEL: "6"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends build-essential cmake
-
-      - name: Cache CMake build
+      # ── apt cache (avoid re-downloading ~60 MB of .debs) ──────────
+      - name: Cache apt packages
         uses: actions/cache@v4
         with:
-          path: build
-          key: ci-${{ matrix.os }}-${{ matrix.build_type }}-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**') }}
-          restore-keys: ci-${{ matrix.os }}-${{ matrix.build_type }}-
+          path: ~/apt-cache
+          key: apt-${{ matrix.runner }}-build-v1
+
+      - name: Install dependencies
+        run: |
+          if [ -d ~/apt-cache ]; then
+            sudo cp -rn ~/apt-cache/. /var/cache/apt/archives/ 2>/dev/null || true
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ccache
+          mkdir -p ~/apt-cache
+          cp -rn /var/cache/apt/archives/*.deb ~/apt-cache/ 2>/dev/null || true
+
+      # ── ccache (compiler output cache — biggest speedup) ───────────
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ matrix.os }}-${{ matrix.build_type }}-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**', 'examples/**') }}
+          restore-keys: |
+            ccache-${{ matrix.os }}-${{ matrix.build_type }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --zero-stats
+          ccache --max-size="${CCACHE_MAXSIZE}"
 
       - name: Configure
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DTHUNDERBIRD_BUILD_TESTS=ON \
             -DTHUNDERBIRD_BUILD_EXAMPLES=ON \
             -DTHUNDERBIRD_USE_SIMULATED=ON
@@ -72,9 +122,17 @@ jobs:
       - name: Test
         run: cd build && ctest --output-on-failure -j "$(nproc)"
 
+      - name: ccache statistics
+        if: always()
+        run: |
+          echo "### ccache (${{ matrix.os }} / ${{ matrix.build_type }})" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ccache --show-stats >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
   # ── Debian packaging smoke test (build .deb on Ubuntu 22.04) ───────────────
   deb-smoke:
-    name: "Debian pkg smoke test"
+    name: "Deb smoke"
     runs-on: ubuntu-24.04
     container:
       image: ubuntu:22.04
@@ -120,7 +178,7 @@ jobs:
 
   # ── Python wheel smoke test (single arch, single Python, x86_64) ──────────
   wheel-smoke:
-    name: "Wheel smoke test"
+    name: "Wheel smoke"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -128,6 +186,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip                   # caches ~/.cache/pip keyed on pyproject.toml
 
       - name: Install cibuildwheel
         run: pip install cibuildwheel==2.21.*
@@ -171,7 +230,7 @@ jobs:
 
   # ── Docker image smoke test (single arch, native) ──────────────────────────
   docker-smoke:
-    name: "Docker smoke test"
+    name: "Docker ${{ matrix.variant }}"
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -233,3 +292,59 @@ jobs:
             sh -c 'cd /thunderbird/build && ctest --output-on-failure -j $(nproc)'
 
           echo "✓ Dev image verified"
+
+  # ── Dev artifact publishing (push to main only) ────────────────────────────
+  # Publishes Docker images with :dev and :dev-<sha7> tags to GHCR.
+  # Uses GHA layer cache from docker-smoke — effectively a manifest push.
+  # Requires all smoke tests to pass before publishing.
+  dev-publish:
+    name: "Dev publish"
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-and-test, deb-smoke, wheel-smoke, docker-smoke]
+    runs-on: ubuntu-24.04
+    environment: dev
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        variant: [runtime, dev]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push dev image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.${{ matrix.variant }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-${{ matrix.variant }}:dev
+            ghcr.io/${{ github.repository }}-${{ matrix.variant }}:dev-${{ github.sha }}
+          build-args: VERSION=0.0.0-dev
+          cache-from: type=gha,scope=ci-docker-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=ci-docker-${{ matrix.variant }},ignore-error=true
+
+      - name: Step summary
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}-${{ matrix.variant }}"
+          SHA7="${{ github.sha }}"
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ### Dev publish: ${{ matrix.variant }}
+          | Tag | Image |
+          |-----|-------|
+          | \`dev\` | \`${IMAGE}:dev\` |
+          | \`dev-${SHA7:0:7}\` | \`${IMAGE}:dev-${SHA7}\` |
+          EOF

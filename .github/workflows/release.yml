@@ -1,10 +1,23 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Thunderbird SDK — Release Pipeline (v2)
+# Thunderbird SDK — Release Pipeline (v3)
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# Triggered ONLY on semantic-version tags (vX.Y.Z).
-# Single push produces: .deb × 2 arch, .whl × 2 arch × 4 Python, Docker × 2
-# variant × 2 arch, GitHub Release with checksums + cosign signatures.
+# Triggered on semantic-version tags:
+#   vX.Y.Z        → Production release (environment: production)
+#   vX.Y.Z-rc.N   → Staging release candidate (environment: staging)
+#
+# Artifact promotion model:
+#
+#   Dev  (:dev-<sha7>)           ← CI push to main  (ci.yml)
+#   Staging (:X.Y.Z-rc.N)       ← RC tag push       (this workflow)
+#   Production (:X.Y.Z :X.Y :X) ← vX.Y.Z tag        (this workflow)
+#                                  OR promote.yml    (zero-rebuild)
+#
+# Immutability: production tags are write-once.  If promote.yml already
+# created the release, this pipeline detects it and skips gracefully.
+#
+# Single tag push produces: .deb × 2 arch, .whl × 2 arch × 4 Python,
+# Docker × 2 variant × 2 arch, GitHub Release with checksums + cosign.
 #
 # Pipeline topology:
 #
@@ -40,12 +53,11 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"        # vX.Y.Z only — no pre-release
+      - "v[0-9]+.[0-9]+.[0-9]+"           # vX.Y.Z (production)
+      - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+" # vX.Y.Z-rc.N (staging)
 
 permissions:
-  contents: write          # create GH Release & upload assets
-  packages: write          # push to GHCR
-  id-token: write          # cosign keyless signing (Sigstore OIDC)
+  contents: read               # default read; jobs escalate individually
 
 concurrency:
   group: release-${{ github.ref_name }}
@@ -62,8 +74,14 @@ jobs:
   preflight:
     name: "Preflight"
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     outputs:
-      version:       ${{ steps.meta.outputs.version }}
+      version:       ${{ steps.meta.outputs.version }}        # base X.Y.Z
+      full_version:  ${{ steps.meta.outputs.full_version }}   # X.Y.Z or X.Y.Z-rc.N
+      is_rc:         ${{ steps.meta.outputs.is_rc }}          # 'true' or 'false'
+      channel:       ${{ steps.meta.outputs.channel }}        # staging or production
+      skip:          ${{ steps.dedup.outputs.skip }}          # 'true' if already released
       version_major: ${{ steps.meta.outputs.major }}
       version_minor: ${{ steps.meta.outputs.minor }}
       version_patch: ${{ steps.meta.outputs.patch }}
@@ -73,26 +91,37 @@ jobs:
       - name: Extract version from tag
         id: meta
         run: |
-          TAG="${GITHUB_REF_NAME}"                     # e.g. v1.2.3
-          VER="${TAG#v}"                                # 1.2.3
+          TAG="${GITHUB_REF_NAME}"                     # e.g. v1.2.3 or v1.2.3-rc.1
+          FULL_VER="${TAG#v}"                           # 1.2.3 or 1.2.3-rc.1
 
-          # Strict semver validation
-          if [[ ! "${VER}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag '${TAG}' is not valid semver (expected vX.Y.Z)"
+          # Validate: vX.Y.Z or vX.Y.Z-rc.N
+          if [[ "${FULL_VER}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-rc\.([0-9]+))?$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            BASE_VER="${MAJOR}.${MINOR}.${PATCH}"
+          else
+            echo "::error::Tag '${TAG}' is not valid (expected vX.Y.Z or vX.Y.Z-rc.N)"
             exit 1
           fi
 
-          MAJOR="${VER%%.*}"
-          REST="${VER#*.}"
-          MINOR="${REST%%.*}"
-          PATCH="${REST#*.}"
+          if [[ -n "${BASH_REMATCH[5]}" ]]; then
+            IS_RC="true"
+            CHANNEL="staging"
+          else
+            IS_RC="false"
+            CHANNEL="production"
+          fi
 
-          echo "version=${VER}"       >> "$GITHUB_OUTPUT"
-          echo "major=${MAJOR}"       >> "$GITHUB_OUTPUT"
-          echo "minor=${MINOR}"       >> "$GITHUB_OUTPUT"
-          echo "patch=${PATCH}"       >> "$GITHUB_OUTPUT"
+          echo "version=${BASE_VER}"         >> "$GITHUB_OUTPUT"
+          echo "full_version=${FULL_VER}"    >> "$GITHUB_OUTPUT"
+          echo "is_rc=${IS_RC}"              >> "$GITHUB_OUTPUT"
+          echo "channel=${CHANNEL}"          >> "$GITHUB_OUTPUT"
+          echo "major=${MAJOR}"              >> "$GITHUB_OUTPUT"
+          echo "minor=${MINOR}"              >> "$GITHUB_OUTPUT"
+          echo "patch=${PATCH}"              >> "$GITHUB_OUTPUT"
 
-          echo "### 🏷️ Release version: \`${VER}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 🏷️ Release: \`${FULL_VER}\` (${CHANNEL})" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/checkout@v4
         with:
@@ -110,32 +139,37 @@ jobs:
           fi
           echo "✓ CMake version matches tag: ${TAG_VER}"
 
-      # ── Prevent duplicate releases ────────────────────────────────────
-      - name: Check for duplicate release
+      # ── Check for existing release (may have been promoted) ──────────
+      - name: Check for existing release
+        id: dedup
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view "${{ github.ref_name }}" &>/dev/null; then
-            echo "::error::Release ${{ github.ref_name }} already exists. Delete it first or use a new tag."
-            exit 1
+            echo "::notice::Release ${{ github.ref_name }} already exists (may have been promoted). Skipping pipeline."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "✓ No existing release — proceeding with build"
           fi
-          echo "✓ No duplicate release found"
 
       # ── Generate changelog from Git commits ───────────────────────────
       - name: Generate changelog from commits
         id: changelog
+        if: steps.dedup.outputs.skip != 'true'
         run: |
           chmod +x scripts/generate-release-notes.sh
           scripts/generate-release-notes.sh \
-            "${{ steps.meta.outputs.version }}" \
+            "${{ steps.meta.outputs.full_version }}" \
             > /tmp/release_notes_base.md
           echo "path=/tmp/release_notes_base.md" >> "$GITHUB_OUTPUT"
 
           echo "### 📋 Changelog preview" >> "$GITHUB_STEP_SUMMARY"
           head -50 /tmp/release_notes_base.md >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Upload changelog as artifact (for release job) ────────────────
+      # ── Upload changelog as artifact (for release job) ──────────────
       - name: Upload changelog artifact
+        if: steps.dedup.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: release-notes
@@ -148,8 +182,11 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   build-deb:
     name: "Deb ${{ matrix.arch }}"
+    if: needs.preflight.outputs.skip != 'true'
     needs: [preflight]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     container:
       image: ubuntu:22.04
     strategy:
@@ -222,8 +259,11 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   build-wheel:
     name: "Wheel ${{ matrix.arch }}"
+    if: needs.preflight.outputs.skip != 'true'
     needs: [preflight]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: true
       matrix:
@@ -240,6 +280,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip                   # caches ~/.cache/pip keyed on pyproject.toml
 
       - name: Install cibuildwheel
         run: pip install cibuildwheel==2.21.*
@@ -311,8 +352,11 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   test:
     name: "Test ${{ matrix.arch }}"
+    if: needs.preflight.outputs.skip != 'true'
     needs: [preflight]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: true
       matrix:
@@ -321,25 +365,52 @@ jobs:
             runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 200M
+      CCACHE_COMPRESS: "true"
+      CCACHE_COMPRESSLEVEL: "6"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends build-essential cmake
-
-      - name: Cache CMake build
+      # ── apt cache ──────────────────────────────────────────────────
+      - name: Cache apt packages
         uses: actions/cache@v4
         with:
-          path: build
-          key: release-test-${{ matrix.arch }}-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**') }}
-          restore-keys: release-test-${{ matrix.arch }}-
+          path: ~/apt-cache
+          key: apt-${{ matrix.runner }}-build-v1
+
+      - name: Install dependencies
+        run: |
+          if [ -d ~/apt-cache ]; then
+            sudo cp -rn ~/apt-cache/. /var/cache/apt/archives/ 2>/dev/null || true
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ccache
+          mkdir -p ~/apt-cache
+          cp -rn /var/cache/apt/archives/*.deb ~/apt-cache/ 2>/dev/null || true
+
+      # ── ccache ─────────────────────────────────────────────────────
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-release-${{ matrix.arch }}-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**', 'examples/**') }}
+          restore-keys: |
+            ccache-release-${{ matrix.arch }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --zero-stats
+          ccache --max-size="${CCACHE_MAXSIZE}"
 
       - name: Configure, build, test
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DTHUNDERBIRD_VERSION_OVERRIDE=${{ needs.preflight.outputs.version }} \
             -DTHUNDERBIRD_BUILD_TESTS=ON \
             -DTHUNDERBIRD_BUILD_EXAMPLES=ON \
@@ -347,6 +418,9 @@ jobs:
           cmake --build build -j "$(nproc)"
           cd build && ctest --output-on-failure -j "$(nproc)"
 
+      - name: ccache statistics
+        if: always()
+        run: ccache --show-stats
   # ═══════════════════════════════════════════════════════════════════════════
   #  Stage 3 — Docker images (multi-arch via buildx + QEMU)
   #
@@ -357,7 +431,13 @@ jobs:
   docker:
     name: "Docker ${{ matrix.variant }}"
     needs: [preflight, build-deb, test]
+    if: "!cancelled() && !failure() && needs.preflight.outputs.skip != 'true'"
     runs-on: ubuntu-24.04
+    environment: ${{ needs.preflight.outputs.channel }}
+    permissions:
+      contents: read
+      packages: write            # push to GHCR
+      id-token: write            # cosign keyless signing
     strategy:
       fail-fast: true
       matrix:
@@ -390,13 +470,13 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}
           tags: |
-            type=semver,pattern={{version}},value=${{ needs.preflight.outputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.preflight.outputs.version }}
-            type=semver,pattern={{major}},value=${{ needs.preflight.outputs.version }}
-            type=raw,value=latest
+            type=raw,value=${{ needs.preflight.outputs.full_version }}
+            type=raw,value=${{ needs.preflight.outputs.version_major }}.${{ needs.preflight.outputs.version_minor }},enable=${{ needs.preflight.outputs.is_rc != 'true' }}
+            type=raw,value=${{ needs.preflight.outputs.version_major }},enable=${{ needs.preflight.outputs.is_rc != 'true' }}
+            type=raw,value=latest,enable=${{ needs.preflight.outputs.is_rc != 'true' }}
           labels: |
             org.opencontainers.image.title=Thunderbird SDK (${{ matrix.variant }})
-            org.opencontainers.image.version=${{ needs.preflight.outputs.version }}
+            org.opencontainers.image.version=${{ needs.preflight.outputs.full_version }}
             org.opencontainers.image.licenses=MIT
 
       - name: Build and push
@@ -417,7 +497,7 @@ jobs:
 
       - name: Verify multi-arch manifest
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}:${{ needs.preflight.outputs.version }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}:${{ needs.preflight.outputs.full_version }}"
           echo "=== Manifest: ${IMAGE} ==="
           docker buildx imagetools inspect "${IMAGE}"
           ARCHS=$(docker buildx imagetools inspect "${IMAGE}" \
@@ -444,6 +524,34 @@ jobs:
             "${IMAGE}@${DIGEST}" | head -5
           echo "✓ Cosign signature verified"
 
+      # ── Container SBOM (Syft → cosign attest) ───────────────────────
+      - name: Generate container SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}@${{ steps.build.outputs.digest }}
+          output-file: container-sbom-${{ matrix.variant }}.spdx.json
+          format: spdx-json
+
+      - name: Attest container SBOM
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}"
+          DIGEST="${{ steps.build.outputs.digest }}"
+          cosign attest --yes \
+            --predicate container-sbom-${{ matrix.variant }}.spdx.json \
+            --type spdxjson \
+            "${IMAGE}@${DIGEST}"
+          echo "✓ Container SBOM attested"
+
+      # ── Trivy scan (fail on CRITICAL) ────────────────────────────────
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}@${{ steps.build.outputs.digest }}
+          format: table
+          severity: CRITICAL
+          exit-code: 1
+          ignore-unfixed: true
+
       - name: Step summary
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}"
@@ -452,7 +560,7 @@ jobs:
           | Property | Value |
           |----------|-------|
           | Image | \`${IMAGE}\` |
-          | Version | \`${{ needs.preflight.outputs.version }}\` |
+          | Version | \`${{ needs.preflight.outputs.full_version }}\` |
           | Digest | \`${{ steps.build.outputs.digest }}\` |
           | Platforms | linux/amd64, linux/arm64 |
           | Signed | ✓ cosign (Sigstore OIDC) |
@@ -467,7 +575,13 @@ jobs:
   release:
     name: "GitHub Release"
     needs: [preflight, build-deb, build-wheel, test, docker]
+    if: "!cancelled() && !failure() && needs.preflight.outputs.skip != 'true'"
     runs-on: ubuntu-24.04
+    environment: ${{ needs.preflight.outputs.channel }}
+    permissions:
+      contents: write            # create GH Release & upload assets
+      id-token: write            # cosign blob signing
+      attestations: write        # SLSA provenance attestations
     steps:
       - uses: actions/checkout@v4
         with:
@@ -508,12 +622,44 @@ jobs:
             artifacts/SHA256SUMS.txt
           echo "✓ Checksums signed with cosign"
 
+      # ── SBOM for release artifacts (Syft) ───────────────────────────
+      - name: Generate release SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          output-file: artifacts/thunderbird-sdk.spdx.json
+          format: spdx-json
+
+      # ── SLSA provenance attestation ─────────────────────────────────
+      # Uses GitHub's native artifact attestation (SLSA Build L2+).
+      # Creates Sigstore-backed provenance for each artifact.
+      - name: Attest build provenance (debs)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: artifacts/*.deb
+
+      - name: Attest build provenance (wheels)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: artifacts/*.whl
+
+      - name: Attest build provenance (checksums)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: artifacts/SHA256SUMS.txt
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: artifacts/*.deb
+          sbom-path: artifacts/thunderbird-sdk.spdx.json
+
       # ── Generate final release notes (with artifacts table) ─────────
       - name: Generate release notes with artifacts table
         run: |
           chmod +x scripts/generate-release-notes.sh
           scripts/generate-release-notes.sh \
-            "${{ needs.preflight.outputs.version }}" \
+            "${{ needs.preflight.outputs.full_version }}" \
             "artifacts" \
             > /tmp/release_notes.md
           echo ""
@@ -525,15 +671,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          RC_FLAG=""
+          if [ "${{ needs.preflight.outputs.is_rc }}" = "true" ]; then
+            RC_FLAG="--prerelease"
+          fi
+
           gh release create "${{ github.ref_name }}" \
-            --title "Thunderbird SDK ${{ needs.preflight.outputs.version }}" \
+            --title "Thunderbird SDK ${{ needs.preflight.outputs.full_version }}" \
             --notes-file /tmp/release_notes.md \
             --verify-tag \
+            ${RC_FLAG} \
             artifacts/*.deb \
             artifacts/*.whl \
             artifacts/SHA256SUMS.txt \
             artifacts/SHA256SUMS.txt.sig \
-            artifacts/SHA256SUMS.txt.cert
+            artifacts/SHA256SUMS.txt.cert \
+            artifacts/thunderbird-sdk.spdx.json
 
       # ── Post-release verification ───────────────────────────────────
       - name: Verify release was created
@@ -554,9 +707,10 @@ jobs:
 
       - name: Step summary
         run: |
-          VER="${{ needs.preflight.outputs.version }}"
+          VER="${{ needs.preflight.outputs.full_version }}"
+          CHANNEL="${{ needs.preflight.outputs.channel }}"
           cat >> "$GITHUB_STEP_SUMMARY" << EOF
-          ### 🎉 Release v${VER} Published
+          ### 🎉 Release ${VER} Published (${CHANNEL})
 
           | Artifact type | Count |
           |---------------|-------|
@@ -565,5 +719,5 @@ jobs:
           | Checksum files | 3 (SHA256SUMS.txt + .sig + .cert) |
           | Docker images | 2 (runtime + dev) × 2 arch |
 
-          **Release URL**: https://github.com/${{ github.repository }}/releases/tag/v${VER}
+          **Release URL**: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
           EOF

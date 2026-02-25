@@ -1,0 +1,256 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Security Scanning Pipeline
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Runs on every push/PR + weekly schedule.  Covers:
+#   • CodeQL static analysis (C++ & Python)
+#   • Dependency review (PR only — license + vulnerability)
+#   • Container image scanning (Trivy)
+#   • SBOM generation (Syft — source + container)
+#   • Secret scanning (TruffleHog)
+#
+# Results are uploaded to GitHub Security tab (Code Scanning / Dependabot).
+# ─────────────────────────────────────────────────────────────────────────────
+name: Security
+
+on:
+  push:
+    branches: [main, develop]
+    tags-ignore: ["v*"]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly Monday 06:00 UTC — catches new CVEs in base images / deps
+    - cron: "0 6 * * 1"
+  workflow_dispatch:            # manual trigger for ad-hoc scans
+
+# ── Minimal default permissions — each job escalates only what it needs ──────
+permissions:
+  contents: read
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Job 1 — CodeQL (C++ & Python static analysis)
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  codeql:
+    name: "CodeQL (${{ matrix.language }})"
+    runs-on: ubuntu-24.04
+    permissions:
+      security-events: write       # upload SARIF to Code Scanning
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [c-cpp, python]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Use extended security + quality queries
+          queries: security-and-quality
+
+      - name: Install build dependencies (C++)
+        if: matrix.language == 'c-cpp'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake ccache
+
+      - name: Cache ccache (CodeQL)
+        if: matrix.language == 'c-cpp'
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-codeql-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**', 'examples/**') }}
+          restore-keys: ccache-codeql-
+
+      - name: Build C++ (for CodeQL tracing)
+        if: matrix.language == 'c-cpp'
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_MAXSIZE: 200M
+          CCACHE_COMPRESS: "true"
+        run: |
+          ccache --zero-stats
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DTHUNDERBIRD_BUILD_TESTS=ON \
+            -DTHUNDERBIRD_BUILD_EXAMPLES=ON \
+            -DTHUNDERBIRD_USE_SIMULATED=ON
+          cmake --build build -j "$(nproc)"
+          ccache --show-stats
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  #  Job 2 — Dependency Review (PR only — licenses + known vulns)
+  # ─────────────────────────────────────────────────────────────────────────
+  dependency-review:
+    name: "Dependency Review"
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write         # post review comments
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          # Fail on high/critical vulnerabilities
+          fail-on-severity: high
+          # Block copy-left licenses in a permissive (MIT) project
+          deny-licenses: GPL-2.0-only, GPL-3.0-only, AGPL-3.0-only
+          comment-summary-in-pr: always
+
+  # ─────────────────────────────────────────────────────────────────────────
+  #  Job 3 — SBOM Generation (source-level, Syft)
+  # ─────────────────────────────────────────────────────────────────────────
+  sbom-source:
+    name: "SBOM (source)"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate source SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          output-file: thunderbird-sdk-source.spdx.json
+          format: spdx-json
+
+      - name: Generate source SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          output-file: thunderbird-sdk-source.cdx.json
+          format: cyclonedx-json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-source
+          path: |
+            thunderbird-sdk-source.spdx.json
+            thunderbird-sdk-source.cdx.json
+          retention-days: 90
+
+  # ─────────────────────────────────────────────────────────────────────────
+  #  Job 4 — Container Image Scanning (Trivy)
+  # ─────────────────────────────────────────────────────────────────────────
+  container-scan:
+    name: "Container Scan (${{ matrix.variant }})"
+    runs-on: ubuntu-24.04
+    permissions:
+      security-events: write       # upload SARIF
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [runtime, dev]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.variant }} image (for scanning)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.${{ matrix.variant }}
+          platforms: linux/amd64
+          load: true
+          tags: thunderbird-${{ matrix.variant }}:scan
+          build-args: VERSION=0.0.0
+          cache-from: type=gha,scope=ci-docker-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=ci-docker-${{ matrix.variant }},ignore-error=true
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: thunderbird-${{ matrix.variant }}:scan
+          format: sarif
+          output: trivy-${{ matrix.variant }}.sarif
+          severity: CRITICAL,HIGH
+          # Ignore unfixed vulnerabilities (base image noise)
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.variant }}.sarif
+          category: trivy-${{ matrix.variant }}
+
+      - name: Generate container SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: thunderbird-${{ matrix.variant }}:scan
+          output-file: thunderbird-${{ matrix.variant }}.spdx.json
+          format: spdx-json
+
+      - name: Upload container SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-container-${{ matrix.variant }}
+          path: thunderbird-${{ matrix.variant }}.spdx.json
+          retention-days: 90
+
+  # ─────────────────────────────────────────────────────────────────────────
+  #  Job 5 — Secret Scanning (TruffleHog)
+  # ─────────────────────────────────────────────────────────────────────────
+  secret-scan:
+    name: "Secret Scan"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # full history for commit scanning
+
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified --results=verified,unknown
+
+  # ─────────────────────────────────────────────────────────────────────────
+  #  Job 6 — Scorecard (OpenSSF supply chain health)
+  # ─────────────────────────────────────────────────────────────────────────
+  scorecard:
+    name: "OpenSSF Scorecard"
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      security-events: write
+      contents: read
+      id-token: write              # for Scorecard API
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload Scorecard SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: scorecard.sarif
+          category: scorecard

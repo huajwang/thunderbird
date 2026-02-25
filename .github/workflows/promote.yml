@@ -1,0 +1,385 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Artifact Promotion (RC → Production)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Promotes release-candidate artifacts to production WITHOUT rebuilding.
+# Docker images are re-tagged via manifest copy (crane); GitHub Release is
+# created from the existing RC release's verified artifacts.
+#
+# Promotion model:
+#
+#   Dev  (:dev-<sha7>)           ← CI push to main  (ci.yml)
+#   Staging (:X.Y.Z-rc.N)       ← RC tag push       (release.yml)
+#   Production (:X.Y.Z :X.Y :X) ← This workflow     (promote.yml)
+#
+# Immutability guarantees:
+#   • Source RC artifacts are verified via SHA256 checksums + cosign
+#   • Target Docker tags must not already exist (write-once)
+#   • Production GitHub Release cannot overwrite existing one
+#   • Digest is preserved through promotion (byte-identical manifests)
+#
+# Requires GitHub environment "production" with reviewer approval.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "RC tag to promote (e.g., v1.2.3-rc.2)"
+        required: true
+        type: string
+      promote_github_release:
+        description: "Also create production GitHub Release from RC artifacts"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  Stage 1 — Validate inputs + verify immutability constraints
+# ═════════════════════════════════════════════════════════════════════════════
+jobs:
+  validate:
+    name: "Validate"
+    runs-on: ubuntu-24.04
+    environment: production            # requires reviewer approval
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      source_tag:    ${{ steps.parse.outputs.source_tag }}
+      base_version:  ${{ steps.parse.outputs.base_version }}
+      full_version:  ${{ steps.parse.outputs.full_version }}
+      rc_number:     ${{ steps.parse.outputs.rc_number }}
+      major:         ${{ steps.parse.outputs.major }}
+      minor:         ${{ steps.parse.outputs.minor }}
+    steps:
+      - name: Parse and validate inputs
+        id: parse
+        run: |
+          SOURCE="${{ inputs.source_tag }}"
+
+          # Validate RC tag format: vX.Y.Z-rc.N
+          if [[ ! "${SOURCE}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.([0-9]+)$ ]]; then
+            echo "::error::Source tag '${SOURCE}' is not a valid RC tag (expected vX.Y.Z-rc.N)"
+            exit 1
+          fi
+
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+          PATCH="${BASH_REMATCH[3]}"
+          RC="${BASH_REMATCH[4]}"
+          BASE_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          FULL_VERSION="${BASE_VERSION}-rc.${RC}"
+
+          echo "source_tag=${SOURCE}"          >> "$GITHUB_OUTPUT"
+          echo "base_version=${BASE_VERSION}"  >> "$GITHUB_OUTPUT"
+          echo "full_version=${FULL_VERSION}"  >> "$GITHUB_OUTPUT"
+          echo "rc_number=${RC}"               >> "$GITHUB_OUTPUT"
+          echo "major=${MAJOR}"                >> "$GITHUB_OUTPUT"
+          echo "minor=${MINOR}"                >> "$GITHUB_OUTPUT"
+
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ### Promotion Request
+          | Property | Value |
+          |----------|-------|
+          | Source | \`${SOURCE}\` |
+          | Target | \`v${BASE_VERSION}\` |
+          | RC # | \`${RC}\` |
+          EOF
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify source images exist
+        run: |
+          BASE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          SOURCE_VER="${{ steps.parse.outputs.full_version }}"
+
+          for VARIANT in runtime dev; do
+            IMAGE="${BASE}-${VARIANT}:${SOURCE_VER}"
+            echo "Checking ${IMAGE}..."
+            if ! crane manifest "${IMAGE}" > /dev/null 2>&1; then
+              echo "::error::Source image not found: ${IMAGE}"
+              echo "Ensure the RC release pipeline completed successfully."
+              exit 1
+            fi
+            DIGEST=$(crane digest "${IMAGE}")
+            echo "✓ ${IMAGE} → ${DIGEST}"
+          done
+
+      - name: Verify target tags do NOT exist (immutability)
+        run: |
+          BASE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          TARGET_VER="${{ steps.parse.outputs.base_version }}"
+
+          for VARIANT in runtime dev; do
+            IMAGE="${BASE}-${VARIANT}:${TARGET_VER}"
+            if crane manifest "${IMAGE}" > /dev/null 2>&1; then
+              echo "::error::Target image already exists: ${IMAGE}"
+              echo "Immutable artifact policy prevents overwriting production tags."
+              exit 1
+            fi
+            echo "✓ ${IMAGE} does not exist (safe to promote)"
+          done
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  #  Stage 2 — Docker tag promotion (crane copy — zero-rebuild manifest copy)
+  # ═════════════════════════════════════════════════════════════════════════════
+  promote-docker:
+    name: "Docker ${{ matrix.variant }}"
+    needs: [validate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write              # cosign signing
+    strategy:
+      fail-fast: true
+      matrix:
+        variant: [runtime, dev]
+    steps:
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote Docker tags (manifest copy — no rebuild)
+        id: promote
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}"
+          SOURCE_VER="${{ needs.validate.outputs.full_version }}"
+          TARGET_VER="${{ needs.validate.outputs.base_version }}"
+          MAJOR="${{ needs.validate.outputs.major }}"
+          MINOR="${{ needs.validate.outputs.minor }}"
+
+          SOURCE="${IMAGE}:${SOURCE_VER}"
+          DIGEST=$(crane digest "${SOURCE}")
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+          echo "Promoting ${SOURCE} (${DIGEST})..."
+          echo ""
+
+          # Copy manifest to all production tags (no layer transfer — instant)
+          for TAG in "${TARGET_VER}" "${MAJOR}.${MINOR}" "${MAJOR}" "latest"; do
+            echo "  → ${IMAGE}:${TAG}"
+            crane copy "${SOURCE}" "${IMAGE}:${TAG}"
+          done
+
+          echo ""
+          echo "✓ All tags promoted"
+
+          # Verify digest matches (byte-identical)
+          VERIFY_DIGEST=$(crane digest "${IMAGE}:${TARGET_VER}")
+          if [ "${DIGEST}" != "${VERIFY_DIGEST}" ]; then
+            echo "::error::Digest mismatch after promotion! Source=${DIGEST} Target=${VERIFY_DIGEST}"
+            exit 1
+          fi
+          echo "✓ Digest verified: ${VERIFY_DIGEST}"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign promoted image
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}"
+          DIGEST="${{ steps.promote.outputs.digest }}"
+
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+
+          cosign verify \
+            --certificate-identity-regexp "github.com/${{ github.repository }}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${IMAGE}@${DIGEST}" | head -5
+          echo "✓ Cosign signature verified for promoted image"
+
+      - name: Step summary
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}"
+          VER="${{ needs.validate.outputs.base_version }}"
+          MAJOR="${{ needs.validate.outputs.major }}"
+          MINOR="${{ needs.validate.outputs.minor }}"
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ### Docker promotion: ${{ matrix.variant }}
+
+          | Tag | Image |
+          |-----|-------|
+          | \`${VER}\` | \`${IMAGE}:${VER}\` |
+          | \`${MAJOR}.${MINOR}\` | \`${IMAGE}:${MAJOR}.${MINOR}\` |
+          | \`${MAJOR}\` | \`${IMAGE}:${MAJOR}\` |
+          | \`latest\` | \`${IMAGE}:latest\` |
+
+          **Source**: \`${IMAGE}:${{ needs.validate.outputs.full_version }}\`
+          **Digest**: \`${{ steps.promote.outputs.digest }}\`
+          **Signed**: ✓ cosign (Sigstore OIDC)
+          EOF
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  #  Stage 3 — GitHub Release promotion (optional)
+  #
+  #  Downloads artifacts from the RC release, verifies integrity, and creates
+  #  a production GitHub Release with identical files.
+  # ═════════════════════════════════════════════════════════════════════════════
+  promote-release:
+    name: "GitHub Release"
+    if: inputs.promote_github_release
+    needs: [validate, promote-docker]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0             # full history — need to resolve RC tag
+
+      - name: Verify production release does not exist (immutability)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET_TAG="v${{ needs.validate.outputs.base_version }}"
+          if gh release view "${TARGET_TAG}" &>/dev/null; then
+            echo "::error::Release ${TARGET_TAG} already exists — immutable artifact policy prevents overwrite"
+            exit 1
+          fi
+          echo "✓ No existing release for ${TARGET_TAG}"
+
+      - name: Download RC release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p artifacts
+          SOURCE_TAG="${{ needs.validate.outputs.source_tag }}"
+          echo "Downloading artifacts from ${SOURCE_TAG}..."
+          gh release download "${SOURCE_TAG}" \
+            --dir artifacts \
+            --pattern "*.deb" \
+            --pattern "*.whl" \
+            --pattern "SHA256SUMS.txt" \
+            --pattern "SHA256SUMS.txt.sig" \
+            --pattern "SHA256SUMS.txt.cert" \
+            --pattern "*.spdx.json"
+          echo ""
+          echo "=== Downloaded artifacts ==="
+          ls -lh artifacts/
+
+      - name: Verify checksums (integrity gate)
+        run: |
+          cd artifacts
+          sha256sum --check SHA256SUMS.txt
+          echo "✓ All artifact checksums verified"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify cosign signature on checksums
+        run: |
+          cosign verify-blob \
+            --signature artifacts/SHA256SUMS.txt.sig \
+            --certificate artifacts/SHA256SUMS.txt.cert \
+            --certificate-identity-regexp "github.com/${{ github.repository }}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            artifacts/SHA256SUMS.txt
+          echo "✓ Cosign signature verified — artifacts are from trusted CI"
+
+      # ── SLSA provenance for promoted artifacts ────────────────────────
+      - name: Attest build provenance (debs)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: artifacts/*.deb
+
+      - name: Attest build provenance (wheels)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: artifacts/*.whl
+
+      - name: Generate release notes
+        run: |
+          chmod +x scripts/generate-release-notes.sh
+
+          # Get the commit the RC tag points to
+          COMMIT_SHA=$(git rev-list -n1 "${{ needs.validate.outputs.source_tag }}")
+
+          scripts/generate-release-notes.sh \
+            "${{ needs.validate.outputs.base_version }}" \
+            "artifacts" \
+            > /tmp/release_notes_base.md
+
+          # Prepend promotion provenance
+          {
+            echo "> **Promoted from** \`${{ needs.validate.outputs.source_tag }}\` — all artifacts are byte-identical to the RC build."
+            echo "> Verified via SHA256 checksums + Sigstore cosign signature."
+            echo ""
+            cat /tmp/release_notes_base.md
+          } > /tmp/release_notes.md
+
+      - name: Create production tag + release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET_TAG="v${{ needs.validate.outputs.base_version }}"
+          COMMIT_SHA=$(git rev-list -n1 "${{ needs.validate.outputs.source_tag }}")
+
+          echo "Creating production tag ${TARGET_TAG} at ${COMMIT_SHA}..."
+
+          # Create lightweight tag pointing to the same commit as the RC
+          gh api repos/${{ github.repository }}/git/refs \
+            --method POST \
+            -f ref="refs/tags/${TARGET_TAG}" \
+            -f sha="${COMMIT_SHA}" 2>/dev/null || \
+            echo "::notice::Tag ${TARGET_TAG} already exists"
+
+          # Create release
+          gh release create "${TARGET_TAG}" \
+            --title "Thunderbird SDK ${{ needs.validate.outputs.base_version }}" \
+            --notes-file /tmp/release_notes.md \
+            --verify-tag \
+            artifacts/*.deb \
+            artifacts/*.whl \
+            artifacts/SHA256SUMS.txt \
+            artifacts/SHA256SUMS.txt.sig \
+            artifacts/SHA256SUMS.txt.cert \
+            artifacts/thunderbird-sdk.spdx.json
+
+          echo "✓ Production release ${TARGET_TAG} created"
+
+      - name: Step summary
+        run: |
+          VER="${{ needs.validate.outputs.base_version }}"
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ### 🎉 Production Release v${VER}
+
+          **Promoted from**: \`${{ needs.validate.outputs.source_tag }}\`
+          **Integrity**: ✓ SHA256 checksums verified + cosign signature
+          **Artifacts**: Byte-identical to RC build (zero rebuild)
+
+          | Artifact type | Count |
+          |---------------|-------|
+          | Debian packages | $(ls artifacts/*.deb 2>/dev/null | wc -l) |
+          | Python wheels | $(ls artifacts/*.whl 2>/dev/null | wc -l) |
+          | Docker images | 2 (runtime + dev) × 2 arch |
+          | Checksum files | 3 (SHA256SUMS.txt + .sig + .cert) |
+
+          **Release URL**: https://github.com/${{ github.repository }}/releases/tag/v${VER}
+          EOF
