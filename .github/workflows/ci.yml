@@ -333,7 +333,7 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}-${{ matrix.variant }}:dev
             ghcr.io/${{ github.repository }}-${{ matrix.variant }}:dev-${{ github.sha }}
-          build-args: VERSION=0.0.0-dev
+          build-args: VERSION=0.0.0
           cache-from: type=gha,scope=ci-docker-${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=ci-docker-${{ matrix.variant }},ignore-error=true
 
