@@ -118,7 +118,9 @@ case "${MODE}" in
         ;;
     auto|"")
         # Prefer tag, fall back to CMakeLists.txt
-        version_from_tag 2>/dev/null || version_from_cmake
+        # Run in a subshell so die()/exit inside version_from_tag
+        # doesn't terminate this script before the || fallback runs.
+        (version_from_tag) 2>/dev/null || version_from_cmake
         ;;
     *)
         die "Unknown option: ${MODE}"
