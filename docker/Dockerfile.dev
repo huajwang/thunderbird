@@ -127,6 +127,18 @@ RUN ldconfig && \
 WORKDIR /thunderbird
 COPY --from=builder /src/ /thunderbird/
 
+# ── Fix CTest paths ─────────────────────────────────────────────────────────
+# The builder stage compiled under /src, but we copy to /thunderbird.
+# Re-run cmake configure (no rebuild needed) so CTestTestfile.cmake has correct
+# absolute paths for test executables.
+RUN cmake -S . -B build \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DTHUNDERBIRD_BUILD_TESTS=ON \
+        -DTHUNDERBIRD_BUILD_EXAMPLES=ON \
+        -DTHUNDERBIRD_BUILD_PYTHON=ON \
+        -DTHUNDERBIRD_USE_SIMULATED=ON
+
 # ── Set up Python path for the built extension module ────────────────────────
 ENV PYTHONPATH="/thunderbird/build/sdk/python:${PYTHONPATH:-}"
 

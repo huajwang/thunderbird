@@ -41,8 +41,9 @@ int main() {
         rb.push(4);
         assert(rb.dropped() >= 1);
 
-        auto v = rb.pop();
-        assert(v.has_value() && *v == 2); // oldest surviving
+        auto popped = rb.pop();
+        (void)popped;
+        assert(popped.has_value() && *popped == 2); // oldest surviving
     }
 
     // ── Shared pointers ─────────────────────────────────────────────────────

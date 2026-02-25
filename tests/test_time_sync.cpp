@@ -90,9 +90,10 @@ static void test_basic_assembly() {
     // IMU block: samples in (0, 100 ms] → 5,10,...,95 = 19 samples
     // (0 ms was consumed by the first bundle as <= 0)
     assert(!sf2->imu_block.empty());
-    for (auto& imu : sf2->imu_block) {
-        assert(imu.timestamp_ns > 0);
-        assert(imu.timestamp_ns <= 100'000'000);
+    for (const auto& sample : sf2->imu_block) {
+        (void)sample;
+        assert(sample.timestamp_ns > 0);
+        assert(sample.timestamp_ns <= 100'000'000);
     }
 
     std::printf("PASS\n");
@@ -122,8 +123,9 @@ static void test_camera_miss() {
     assert(!sf->camera.has_value());   // should be missing
     assert(sf->sync_quality == 0.0f);
 
-    auto st = engine.stats();
-    assert(st.camera_misses >= 1);
+    auto st1 = engine.stats();
+    (void)st1;
+    assert(st1.camera_misses >= 1);
 
     std::printf("PASS\n");
 }
@@ -164,9 +166,10 @@ static void test_imu_block() {
     // That's 2.5, 5.0, ... 50.0 ms → 20 samples
     assert(sf2->imu_block.size() == 20);
 
-    for (auto& imu : sf2->imu_block) {
-        assert(imu.timestamp_ns > 0);
-        assert(imu.timestamp_ns <= 50'000'000);
+    for (const auto& sample : sf2->imu_block) {
+        (void)sample;
+        assert(sample.timestamp_ns > 0);
+        assert(sample.timestamp_ns <= 50'000'000);
     }
 
     std::printf("PASS\n");
@@ -250,9 +253,10 @@ static void test_stats() {
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
     engine.stop();
 
-    auto st = engine.stats();
-    assert(st.frames_produced == 2);
-    assert(st.camera_misses == 1);   // first had no camera
+    auto st6 = engine.stats();
+    (void)st6;
+    assert(st6.frames_produced == 2);
+    assert(st6.camera_misses == 1);   // first had no camera
     assert(engine.framesProduced() == 2);
 
     std::printf("PASS\n");
@@ -318,11 +322,12 @@ static void test_drift_estimation() {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     engine.stop();
 
-    auto st = engine.stats();
-    assert(st.frames_produced == 10);
+    auto st8 = engine.stats();
+    (void)st8;
+    assert(st8.frames_produced == 10);
     // drift should be approximately 10 ms/s = 10'000'000 ns/s
     // Check it's at least 5'000'000 ns/s (allowing estimation noise)
-    assert(std::abs(st.drift_ns_per_sec) > 5'000'000);
+    assert(std::abs(st8.drift_ns_per_sec) > 5'000'000);
     assert(drift_warned);
 
     std::printf("PASS\n");

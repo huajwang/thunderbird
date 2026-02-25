@@ -33,9 +33,10 @@ static void test_to_stamp_basic() {
 
     // 1.5 seconds = 1'500'000'000 ns
     constexpr int64_t ts = 1'500'000'000LL;
-    auto s = rh::to_stamp(ts);
-    assert(s.sec == 1);
-    assert(s.nanosec == 500'000'000u);
+    auto stamp = rh::to_stamp(ts);
+    (void)stamp;
+    assert(stamp.sec == 1);
+    assert(stamp.nanosec == 500'000'000u);
 
     std::printf("PASS\n");
 }
@@ -43,9 +44,10 @@ static void test_to_stamp_basic() {
 static void test_to_stamp_zero() {
     std::printf("test_to_stamp_zero ... ");
 
-    auto s = rh::to_stamp(0);
-    assert(s.sec == 0);
-    assert(s.nanosec == 0u);
+    auto stamp = rh::to_stamp(0);
+    (void)stamp;
+    assert(stamp.sec == 0);
+    assert(stamp.nanosec == 0u);
 
     std::printf("PASS\n");
 }
@@ -55,9 +57,10 @@ static void test_to_stamp_large() {
 
     // 3600.123456789 seconds
     constexpr int64_t ts = 3600LL * 1'000'000'000LL + 123'456'789LL;
-    auto s = rh::to_stamp(ts);
-    assert(s.sec == 3600);
-    assert(s.nanosec == 123'456'789u);
+    auto stamp = rh::to_stamp(ts);
+    (void)stamp;
+    assert(stamp.sec == 3600);
+    assert(stamp.nanosec == 123'456'789u);
 
     std::printf("PASS\n");
 }
@@ -66,9 +69,10 @@ static void test_to_stamp_exact_second() {
     std::printf("test_to_stamp_exact_second ... ");
 
     constexpr int64_t ts = 2'000'000'000LL;
-    auto s = rh::to_stamp(ts);
-    assert(s.sec == 2);
-    assert(s.nanosec == 0u);
+    auto stamp = rh::to_stamp(ts);
+    (void)stamp;
+    assert(stamp.sec == 2);
+    assert(stamp.nanosec == 0u);
 
     std::printf("PASS\n");
 }

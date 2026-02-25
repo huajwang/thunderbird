@@ -90,12 +90,16 @@ static void test_sensor_queue_basic() {
     assert(q.size() == 3);
 
     auto v1 = q.try_pop();
+    (void)v1;
     assert(v1.has_value() && *v1 == 10);
     auto v2 = q.try_pop();
+    (void)v2;
     assert(v2.has_value() && *v2 == 20);
     auto v3 = q.try_pop();
+    (void)v3;
     assert(v3.has_value() && *v3 == 30);
     auto v4 = q.try_pop();
+    (void)v4;
     assert(!v4.has_value());
 
     std::puts("  PASS");
@@ -118,6 +122,7 @@ static void test_sensor_queue_drop_oldest() {
     assert(q.size() == 3);
 
     auto v = q.try_pop();
+    (void)v;
     assert(v.has_value() && *v == 2); // '1' was dropped
 
     q.push(5);
@@ -137,6 +142,7 @@ static void test_sensor_queue_blocking() {
 
     // Timeout when empty.
     auto none = q.pop_for(std::chrono::milliseconds(50));
+    (void)none;
     assert(!none.has_value());
 
     // Push from another thread, pop with blocking.
@@ -146,6 +152,7 @@ static void test_sensor_queue_blocking() {
     });
 
     auto val = q.pop_for(std::chrono::milliseconds(500));
+    (void)val;
     assert(val.has_value() && *val == 42);
     producer.join();
 
@@ -180,6 +187,7 @@ static void test_data_layer_lidar_pull() {
     assert(frame->points.back().timestamp_offset_ns > 0);
     // Last offset should be approximately 100,000,000 ns (within PoC tolerance).
     int32_t last_offset = frame->points.back().timestamp_offset_ns;
+    (void)last_offset;
     assert(last_offset >= 99'000'000 && last_offset <= 101'000'000);
 
     // Queue should be empty now.
@@ -220,6 +228,7 @@ static void test_data_layer_camera_zero_copy() {
 
     auto raw = make_camera(7, 320, 240);
     const size_t expected_bytes = 320u * 240u * 3u;
+    (void)expected_bytes;
 
     layer.ingestCamera(raw);
 

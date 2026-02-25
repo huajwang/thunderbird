@@ -60,9 +60,9 @@ public:
     std::optional<T> try_pop() {
         std::lock_guard<std::mutex> lk(mtx_);
         if (queue_.empty()) return std::nullopt;
-        T item = std::move(queue_.front());
+        std::optional<T> result(std::move(queue_.front()));
         queue_.pop_front();
-        return item;
+        return result;
     }
 
     /// Blocking pop with timeout.  Returns std::nullopt on timeout.
@@ -71,9 +71,9 @@ public:
         std::unique_lock<std::mutex> lk(mtx_);
         if (!cv_.wait_for(lk, timeout, [this]{ return !queue_.empty(); }))
             return std::nullopt;
-        T item = std::move(queue_.front());
+        std::optional<T> result(std::move(queue_.front()));
         queue_.pop_front();
-        return item;
+        return result;
     }
 
     // ── Query ───────────────────────────────────────────────────────────

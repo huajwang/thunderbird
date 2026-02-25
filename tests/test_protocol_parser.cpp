@@ -16,13 +16,12 @@ using namespace thunderbird::protocol;
 
 void test_crc32() {
     // CRC of empty data
-    uint32_t c0 = Crc32::compute(nullptr, 0);
-    assert(c0 == 0x00000000);
+    assert(Crc32::compute(nullptr, 0) == 0x00000000);
 
     // CRC of known data
     const uint8_t data[] = "123456789";
-    uint32_t c1 = Crc32::compute(data, 9);
-    assert(c1 == 0xCBF43926);  // standard CRC-32 test vector
+    (void)data;
+    assert(Crc32::compute(data, 9) == 0xCBF43926);  // standard CRC-32 test vector
 
     std::puts("  CRC-32: OK");
 }
@@ -49,6 +48,7 @@ void test_build_and_validate() {
     size_t total = build_packet(buf, sizeof(buf),
                                 PacketType::Heartbeat, 1, 99999,
                                 reinterpret_cast<const uint8_t*>(&hb), sizeof(hb));
+    (void)total;
 
     assert(total == kHeaderSize + sizeof(hb) + kCrcSize);
     assert(total <= sizeof(buf));

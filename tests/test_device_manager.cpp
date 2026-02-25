@@ -19,6 +19,7 @@ int main() {
         assert(!dev.is_streaming());
 
         Status s = dev.connect();
+        (void)s;
         assert(s == Status::OK);
         assert(dev.is_connected());
 
