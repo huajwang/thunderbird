@@ -145,14 +145,13 @@ jobs:
             auditwheel show {wheel} &&
             auditwheel repair --plat manylinux2014_x86_64 -w {dest_dir} {wheel}
           CIBW_TEST_COMMAND: >-
-            python -c "
-            import spatial_sdk;
+            python -c
+            "import spatial_sdk;
             print(f'spatial_sdk {spatial_sdk.__version__}');
             print(f'Status.OK = {spatial_sdk.Status.OK}');
             info = spatial_sdk.DeviceInfo();
             print(f'DeviceInfo: {info}');
-            print('OK — wheel smoke test passed');
-            "
+            print('OK — wheel smoke test passed')"
 
       - name: Verify wheel is manylinux2014 tagged
         run: |

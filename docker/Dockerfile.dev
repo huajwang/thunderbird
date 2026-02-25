@@ -45,6 +45,7 @@ RUN apt-get update -qq && \
         build-essential \
         ca-certificates \
         cmake \
+        git \
         pkg-config \
         python3 \
         python3-dev \
@@ -127,7 +128,7 @@ WORKDIR /thunderbird
 COPY --from=builder /src/ /thunderbird/
 
 # ── Set up Python path for the built extension module ────────────────────────
-ENV PYTHONPATH="/thunderbird/build/sdk/python:${PYTHONPATH}"
+ENV PYTHONPATH="/thunderbird/build/sdk/python:${PYTHONPATH:-}"
 
 # Verify SDK installation
 RUN echo "=== SDK version ===" && \
