@@ -133,7 +133,7 @@ before-all = [
 #   no runtime dependency on the host's libstdc++ version.
 repair-wheel-command = [
     "auditwheel show {wheel}",
-    "auditwheel repair --plat manylinux2014_{delocate_archs} -w {dest_dir} {wheel}",
+    "auditwheel repair --plat manylinux2014_$(uname -m) -w {dest_dir} {wheel}",
 ]
 
 # Pass THUNDERBIRD_VERSION_OVERRIDE into scikit-build-core's cmake invocation

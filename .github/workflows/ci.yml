@@ -194,7 +194,7 @@ jobs:
           build-args: |
             VERSION=0.0.0
           cache-from: type=gha,scope=ci-docker-${{ matrix.variant }}
-          cache-to: type=gha,mode=max,scope=ci-docker-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=ci-docker-${{ matrix.variant }},ignore-error=true
 
       - name: Verify runtime image
         if: matrix.variant == 'runtime'

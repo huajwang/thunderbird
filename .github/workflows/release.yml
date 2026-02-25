@@ -267,9 +267,9 @@ jobs:
           CIBW_ENVIRONMENT: >-
             THUNDERBIRD_VERSION_OVERRIDE=${{ needs.preflight.outputs.version }}
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
-            auditwheel show {wheel} &&
+            auditwheel show {wheel};
             auditwheel repair
-            --plat manylinux2014_{delocate_archs}
+            --plat manylinux2014_$(uname -m)
             -w {dest_dir} {wheel}
           CIBW_TEST_COMMAND: >-
             python -c "
@@ -411,7 +411,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ needs.preflight.outputs.version }}
           cache-from: type=gha,scope=docker-${{ matrix.variant }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.variant }},ignore-error=true
           provenance: true
           sbom: true
 

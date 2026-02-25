@@ -558,7 +558,7 @@ manylinux-aarch64-image = "manylinux2014"
 [tool.cibuildwheel.linux]
 repair-wheel-command = [
     "auditwheel show {wheel}",
-    "auditwheel repair --plat manylinux2014_{delocate_archs} -w {dest_dir} {wheel}",
+    "auditwheel repair --plat manylinux2014_$(uname -m) -w {dest_dir} {wheel}",
 ]
 ```
 
