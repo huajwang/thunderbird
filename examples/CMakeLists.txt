@@ -1,0 +1,23 @@
+add_executable(basic_streaming basic_streaming.cpp)
+target_link_libraries(basic_streaming PRIVATE thunderbird_sdk)
+
+add_executable(sync_demo sync_demo.cpp)
+target_link_libraries(sync_demo PRIVATE thunderbird_sdk)
+
+add_executable(raw_sensors raw_sensors.cpp)
+target_link_libraries(raw_sensors PRIVATE thunderbird_sdk)
+
+add_executable(comm_layer_demo comm_layer_demo.cpp)
+target_link_libraries(comm_layer_demo PRIVATE thunderbird_sdk)
+
+add_executable(pull_api_demo pull_api_demo.cpp)
+target_link_libraries(pull_api_demo PRIVATE thunderbird_sdk)
+
+add_executable(callback_api_demo callback_api_demo.cpp)
+target_link_libraries(callback_api_demo PRIVATE thunderbird_sdk)
+
+add_executable(sync_layer_demo sync_layer_demo.cpp)
+target_link_libraries(sync_layer_demo PRIVATE thunderbird_sdk)
+
+add_executable(recorder_demo recorder_demo.cpp)
+target_link_libraries(recorder_demo PRIVATE thunderbird_sdk)
