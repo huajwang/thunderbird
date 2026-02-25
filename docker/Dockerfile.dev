@@ -129,9 +129,12 @@ COPY --from=builder /src/ /thunderbird/
 
 # ── Fix CTest paths ─────────────────────────────────────────────────────────
 # The builder stage compiled under /src, but we copy to /thunderbird.
-# Re-run cmake configure (no rebuild needed) so CTestTestfile.cmake has correct
-# absolute paths for test executables.
-RUN cmake -S . -B build \
+# Clear the stale CMake cache (which records /src as source dir), then
+# re-run cmake configure so CTestTestfile.cmake has correct absolute paths.
+# The object files are still valid, so no rebuild is triggered.
+RUN rm -f build/CMakeCache.txt && \
+    rm -rf build/CMakeFiles && \
+    cmake -S . -B build \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DTHUNDERBIRD_BUILD_TESTS=ON \
