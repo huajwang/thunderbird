@@ -1,0 +1,144 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Development Docker image (multi-arch: linux/amd64, linux/arm64)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Full development environment: headers, static + shared libs, pkg-config,
+# CMake find_package() config, examples, tests, and Python bindings.
+# Intended for SDK consumers building applications and for CI/CD.
+#
+# Multi-arch build:
+#   docker buildx build --platform linux/amd64,linux/arm64 \
+#     --build-arg VERSION=1.2.3 \
+#     -f docker/Dockerfile.dev -t ghcr.io/thunderbird-sdk/thunderbird-dev:1.2.3 .
+#
+# Single-arch local build:
+#   docker build --build-arg VERSION=0.1.0 \
+#     -f docker/Dockerfile.dev -t thunderbird-dev .
+#
+# Usage:
+#   docker run --rm -it thunderbird-dev
+#   # Inside: cmake, gcc, python3, gdb, valgrind all available
+#   # SDK is pre-installed to /usr — use pkg-config or find_package()
+#
+# Image contents:
+#   /usr/include/thunderbird/                     — public headers
+#   /usr/lib/<multiarch>/libthunderbird_sdk.so.*  — shared library
+#   /usr/lib/<multiarch>/libthunderbird_sdk.a     — static library
+#   /usr/lib/<multiarch>/libthunderbird_sdk.so    — dev symlink
+#   /usr/lib/<multiarch>/pkgconfig/thunderbird-sdk.pc
+#   /usr/lib/cmake/ThunderbirdSDK/               — CMake config
+#   /thunderbird/                                  — full source tree
+#
+# Size: ~400 MB (Ubuntu 24.04 + full toolchain + Python + SDK)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Stage 1: Build — compile SDK from source with full toolchain
+# ═══════════════════════════════════════════════════════════════════════════════
+FROM ubuntu:24.04 AS builder
+
+ARG VERSION=0.1.0
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        pkg-config \
+        python3 \
+        python3-dev \
+        python3-pip \
+        python3-venv && \
+    rm -rf /var/lib/apt/lists/*
+
+# Pybind11 for Python bindings
+RUN python3 -m pip install --break-system-packages pybind11
+
+WORKDIR /src
+COPY . .
+
+# Detect multi-arch triplet and build everything
+RUN MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
+    echo "Building for: ${MULTIARCH}" && \
+    cmake -S . -B build \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_LIBRARY_ARCHITECTURE=${MULTIARCH} \
+        -DTHUNDERBIRD_VERSION_OVERRIDE=${VERSION} \
+        -DTHUNDERBIRD_BUILD_TESTS=ON \
+        -DTHUNDERBIRD_BUILD_EXAMPLES=ON \
+        -DTHUNDERBIRD_BUILD_PYTHON=ON \
+        -DTHUNDERBIRD_USE_SIMULATED=ON && \
+    cmake --build build -j "$(nproc)"
+
+# Run tests during build — fail early
+RUN cd build && ctest --output-on-failure -j "$(nproc)"
+
+# Stage both runtime and dev components
+RUN DESTDIR=/staging cmake --install build --component runtime && \
+    DESTDIR=/staging cmake --install build --component dev && \
+    echo "=== Staged files ===" && \
+    find /staging -type f | head -40
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Stage 2: Dev image — full toolchain + installed SDK + source tree
+# ═══════════════════════════════════════════════════════════════════════════════
+FROM ubuntu:24.04 AS dev
+
+ARG VERSION=0.1.0
+ARG DEBIAN_FRONTEND=noninteractive
+
+LABEL org.opencontainers.image.title="Thunderbird SDK Dev"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.description="Thunderbird multi-sensor SDK — full development environment"
+LABEL org.opencontainers.image.source="https://github.com/thunderbird-sdk/thunderbird"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.vendor="Thunderbird SDK"
+
+# ── System dependencies ──────────────────────────────────────────────────────
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        gdb \
+        git \
+        pkg-config \
+        python3 \
+        python3-dev \
+        python3-pip \
+        python3-venv \
+        valgrind && \
+    rm -rf /var/lib/apt/lists/*
+
+# ── Python tooling ───────────────────────────────────────────────────────────
+RUN python3 -m pip install --break-system-packages \
+        numpy pybind11 pytest
+
+# ── Installed SDK (from builder stage) ───────────────────────────────────────
+COPY --from=builder /staging/usr/ /usr/
+RUN ldconfig && \
+    ldconfig -p | grep thunderbird && \
+    pkg-config --modversion thunderbird-sdk
+
+# ── Full source tree (for building examples, running tests, etc.) ────────────
+WORKDIR /thunderbird
+COPY --from=builder /src/ /thunderbird/
+
+# ── Set up Python path for the built extension module ────────────────────────
+ENV PYTHONPATH="/thunderbird/build/sdk/python:${PYTHONPATH}"
+
+# Verify SDK installation
+RUN echo "=== SDK version ===" && \
+    grep '#define THUNDERBIRD_VERSION_STRING' \
+        /usr/include/thunderbird/version.h && \
+    echo "=== pkg-config ===" && \
+    pkg-config --libs --cflags thunderbird-sdk && \
+    echo "=== cmake config ===" && \
+    ls /usr/lib/cmake/ThunderbirdSDK/
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD pkg-config --exists thunderbird-sdk || exit 1
+
+CMD ["/bin/bash"]

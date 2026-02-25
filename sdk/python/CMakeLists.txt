@@ -17,6 +17,10 @@
 # include both:
 #   - <build>/sdk/python/          (for the _spatial_sdk_core.so)
 #   - <source>/sdk/python/         (for the spatial_sdk/ package)
+#
+# When built via scikit-build-core (pip install / cibuildwheel), SKBUILD
+# is set and the extension is installed into spatial_sdk/ alongside
+# __init__.py so the wheel is self-contained.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Locate pybind11 ──────────────────────────────────────────────────────────
@@ -48,11 +52,38 @@ target_link_libraries(_spatial_sdk_core
 
 target_compile_features(_spatial_sdk_core PRIVATE cxx_std_20)
 
-# Copy the pure-Python package next to the .so so `import spatial_sdk` works
-# when PYTHONPATH includes the build directory.
-add_custom_command(TARGET _spatial_sdk_core POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/spatial_sdk
-        $<TARGET_FILE_DIR:_spatial_sdk_core>/spatial_sdk
-    COMMENT "Copying spatial_sdk Python package next to extension module"
-)
+# ── Wheel build: static-link libstdc++ for ABI safety ─────────────────────
+# When building via scikit-build-core (cibuildwheel), we statically link
+# libstdc++ so the wheel is self-contained and works on any manylinux2014
+# host regardless of its system libstdc++ version.
+if(SKBUILD)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        target_link_options(_spatial_sdk_core PRIVATE
+            -static-libstdc++
+            -static-libgcc
+        )
+        message(STATUS "Wheel build: statically linking libstdc++ and libgcc")
+    endif()
+endif()
+
+# ── Install rules ────────────────────────────────────────────────────────────
+# scikit-build-core sets SKBUILD=ON and only installs COMPONENT=python.
+# The extension .so goes inside the spatial_sdk/ package directory so that
+# `from spatial_sdk._spatial_sdk_core import *` works in the installed wheel.
+if(SKBUILD)
+    install(TARGETS _spatial_sdk_core
+        LIBRARY DESTINATION spatial_sdk
+        COMPONENT python
+    )
+    message(STATUS "Wheel build: will install _spatial_sdk_core into spatial_sdk/")
+else()
+    # ── Development workflow ─────────────────────────────────────────────
+    # Copy the pure-Python package next to the .so so `import spatial_sdk`
+    # works when PYTHONPATH includes the build directory.
+    add_custom_command(TARGET _spatial_sdk_core POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/spatial_sdk
+            $<TARGET_FILE_DIR:_spatial_sdk_core>/spatial_sdk
+        COMMENT "Copying spatial_sdk Python package next to extension module"
+    )
+endif()

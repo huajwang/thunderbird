@@ -1,0 +1,5 @@
+usr/include/thunderbird/
+usr/lib/*/libthunderbird_sdk.a
+usr/lib/*/libthunderbird_sdk.so
+usr/lib/*/pkgconfig/thunderbird-sdk.pc
+usr/lib/cmake/ThunderbirdSDK/

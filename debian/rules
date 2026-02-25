@@ -1,0 +1,35 @@
+#!/usr/bin/make -f
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Debian build rules
+# ─────────────────────────────────────────────────────────────────────────────
+# Uses debhelper ≥ 13 with the CMake build system.
+# Builds both shared and static libraries; tests run during build.
+# ─────────────────────────────────────────────────────────────────────────────
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_CXXFLAGS_MAINT_APPEND = -fvisibility=hidden
+export DEB_LDFLAGS_MAINT_APPEND = -Wl,-z,defs
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_LIBRARY_ARCHITECTURE=$(DEB_HOST_MULTIARCH) \
+		$(if $(THUNDERBIRD_VERSION_OVERRIDE),-DTHUNDERBIRD_VERSION_OVERRIDE=$(THUNDERBIRD_VERSION_OVERRIDE),) \
+		-DTHUNDERBIRD_BUILD_TESTS=ON \
+		-DTHUNDERBIRD_BUILD_EXAMPLES=OFF \
+		-DTHUNDERBIRD_BUILD_PYTHON=OFF \
+		-DTHUNDERBIRD_BUILD_ROS2=OFF \
+		-DTHUNDERBIRD_USE_SIMULATED=OFF
+
+override_dh_auto_test:
+	cd obj-* && ctest --output-on-failure -j "$$(nproc)"
+
+# Let debhelper's dh_makeshlibs handle shlibs/symbols automatically
+override_dh_makeshlibs:
+	dh_makeshlibs -plibthunderbird-sdk0 -V
+
+# Strip debug symbols into -dbgsym package (automatic with compat 13)

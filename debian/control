@@ -1,0 +1,46 @@
+Source: thunderbird-sdk
+Section: libs
+Priority: optional
+Maintainer: Thunderbird SDK Team <sdk@thunderbird.dev>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake (>= 3.16),
+ g++ (>= 10),
+ pkg-config,
+Standards-Version: 4.6.2
+Homepage: https://github.com/thunderbird-sdk/thunderbird
+Vcs-Git: https://github.com/thunderbird-sdk/thunderbird.git
+Vcs-Browser: https://github.com/thunderbird-sdk/thunderbird
+Rules-Requires-Root: no
+
+Package: libthunderbird-sdk0
+Architecture: amd64 arm64
+Multi-Arch: same
+Section: libs
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Pre-Depends: ${misc:Pre-Depends}
+Description: Thunderbird multi-sensor SDK — runtime library
+ C++20 SDK for multi-sensor devices combining LiDAR, IMU, and Camera.
+ Provides device communication, data abstraction, time synchronization,
+ and recording/playback.
+ .
+ This package contains the shared library needed to run applications
+ linked against the Thunderbird SDK.
+
+Package: libthunderbird-sdk-dev
+Architecture: amd64 arm64
+Multi-Arch: same
+Section: libdevel
+Depends:
+ libthunderbird-sdk0 (= ${binary:Version}),
+ ${misc:Depends},
+Description: Thunderbird multi-sensor SDK — development files
+ C++20 SDK for multi-sensor devices combining LiDAR, IMU, and Camera.
+ Provides device communication, data abstraction, time synchronization,
+ and recording/playback.
+ .
+ This package contains the headers, static library, pkg-config file,
+ and CMake find-module needed to develop applications against the
+ Thunderbird SDK.

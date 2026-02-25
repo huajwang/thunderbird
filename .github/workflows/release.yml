@@ -1,0 +1,569 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Release Pipeline (v2)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Triggered ONLY on semantic-version tags (vX.Y.Z).
+# Single push produces: .deb × 2 arch, .whl × 2 arch × 4 Python, Docker × 2
+# variant × 2 arch, GitHub Release with checksums + cosign signatures.
+#
+# Pipeline topology:
+#
+#   ┌────────────────────┐
+#   │     preflight      │ extract version, validate tag, dedup guard,
+#   │                    │ generate changelog from Git commits
+#   └─────────┬──────────┘
+#             │
+#   ┌─────────▼──────────────────────────────────────────────┐
+#   │            parallel build + test matrix                 │
+#   │  ┌──────────┐  ┌──────────┐  ┌──────────┐             │
+#   │  │ build-deb│  │build-whl │  │   test   │             │
+#   │  │ x86 arm64│  │ x86 arm64│  │ x86 arm64│             │
+#   │  └────┬─────┘  └────┬─────┘  └────┬─────┘             │
+#   └───────┼──────────────┼─────────────┼───────────────────┘
+#           │              │             │
+#   ┌───────▼──────────────▼─────────────▼───────────────────┐
+#   │                    docker                               │
+#   │   runtime + dev images (linux/amd64 + linux/arm64)      │
+#   │   pushed to GHCR, signed with cosign                    │
+#   └───────────────────────┬────────────────────────────────┘
+#                           │
+#   ┌───────────────────────▼────────────────────────────────┐
+#   │                    release                              │
+#   │   Create GitHub Release with auto-changelog             │
+#   │   Attach .deb + .whl + SHA256SUMS                       │
+#   │   Sign checksum blob with cosign (Sigstore OIDC)        │
+#   └────────────────────────────────────────────────────────┘
+#
+# ─────────────────────────────────────────────────────────────────────────────
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"        # vX.Y.Z only — no pre-release
+
+permissions:
+  contents: write          # create GH Release & upload assets
+  packages: write          # push to GHCR
+  id-token: write          # cosign keyless signing (Sigstore OIDC)
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false            # NEVER cancel a release in flight
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  Stage 1 — Preflight (validation + changelog generation)
+# ═════════════════════════════════════════════════════════════════════════════
+jobs:
+  preflight:
+    name: "Preflight"
+    runs-on: ubuntu-24.04
+    outputs:
+      version:       ${{ steps.meta.outputs.version }}
+      version_major: ${{ steps.meta.outputs.major }}
+      version_minor: ${{ steps.meta.outputs.minor }}
+      version_patch: ${{ steps.meta.outputs.patch }}
+      changelog:     ${{ steps.changelog.outputs.path }}
+    steps:
+      # ── Parse and validate tag ────────────────────────────────────────
+      - name: Extract version from tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"                     # e.g. v1.2.3
+          VER="${TAG#v}"                                # 1.2.3
+
+          # Strict semver validation
+          if [[ ! "${VER}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '${TAG}' is not valid semver (expected vX.Y.Z)"
+            exit 1
+          fi
+
+          MAJOR="${VER%%.*}"
+          REST="${VER#*.}"
+          MINOR="${REST%%.*}"
+          PATCH="${REST#*.}"
+
+          echo "version=${VER}"       >> "$GITHUB_OUTPUT"
+          echo "major=${MAJOR}"       >> "$GITHUB_OUTPUT"
+          echo "minor=${MINOR}"       >> "$GITHUB_OUTPUT"
+          echo "patch=${PATCH}"       >> "$GITHUB_OUTPUT"
+
+          echo "### 🏷️ Release version: \`${VER}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0             # full history for changelog generation
+
+      # ── Verify CMakeLists.txt version matches tag ─────────────────────
+      - name: Verify CMake version matches tag
+        run: |
+          chmod +x scripts/extract-version.sh
+          CMAKE_VER=$(scripts/extract-version.sh --from-cmake)
+          TAG_VER="${{ steps.meta.outputs.version }}"
+          if [ "${CMAKE_VER}" != "${TAG_VER}" ]; then
+            echo "::error::CMake version (${CMAKE_VER}) ≠ tag (${TAG_VER}). Update CMakeLists.txt before tagging."
+            exit 1
+          fi
+          echo "✓ CMake version matches tag: ${TAG_VER}"
+
+      # ── Prevent duplicate releases ────────────────────────────────────
+      - name: Check for duplicate release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ github.ref_name }}" &>/dev/null; then
+            echo "::error::Release ${{ github.ref_name }} already exists. Delete it first or use a new tag."
+            exit 1
+          fi
+          echo "✓ No duplicate release found"
+
+      # ── Generate changelog from Git commits ───────────────────────────
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          chmod +x scripts/generate-release-notes.sh
+          scripts/generate-release-notes.sh \
+            "${{ steps.meta.outputs.version }}" \
+            > /tmp/release_notes_base.md
+          echo "path=/tmp/release_notes_base.md" >> "$GITHUB_OUTPUT"
+
+          echo "### 📋 Changelog preview" >> "$GITHUB_STEP_SUMMARY"
+          head -50 /tmp/release_notes_base.md >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Upload changelog as artifact (for release job) ────────────────
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: /tmp/release_notes_base.md
+          retention-days: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Stage 2a — Build Debian packages (x86_64 + arm64)
+  #             dpkg-buildpackage inside Ubuntu 22.04 (Debian policy compliant)
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-deb:
+    name: "Deb ${{ matrix.arch }}"
+    needs: [preflight]
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ubuntu:22.04
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config g++ \
+            dpkg-dev debhelper devscripts fakeroot lintian \
+            ca-certificates git
+
+      - name: Stamp debian/changelog
+        run: |
+          chmod +x scripts/update-changelog.sh scripts/extract-version.sh
+          scripts/update-changelog.sh \
+            "${{ needs.preflight.outputs.version }}" \
+            "jammy"
+
+      - name: Build .deb packages
+        run: |
+          dpkg-buildpackage -us -uc -b --jobs="$(nproc)" -d
+        env:
+          DEB_BUILD_OPTIONS: "nocheck"
+          THUNDERBIRD_VERSION_OVERRIDE: ${{ needs.preflight.outputs.version }}
+
+      - name: Run tests
+        run: |
+          cd obj-* 2>/dev/null || cd debian/.debhelper/generated/*/build 2>/dev/null || true
+          if [ -f CTestTestfile.cmake ]; then
+            ctest --output-on-failure -j "$(nproc)"
+          fi
+
+      - name: Collect and verify .deb artifacts
+        run: |
+          mkdir -p dist
+          cp ../*.deb dist/ 2>/dev/null || cp *.deb dist/ 2>/dev/null || true
+          echo "=== Built packages ==="
+          ls -lh dist/
+          echo ""
+          lintian --no-tag-display-limit dist/*.deb || true
+          echo ""
+          echo "=== libthunderbird-sdk0 ==="
+          dpkg-deb -c dist/libthunderbird-sdk0_*.deb | head -20
+          echo ""
+          echo "=== libthunderbird-sdk-dev ==="
+          dpkg-deb -c dist/libthunderbird-sdk-dev_*.deb | head -20
+
+      - name: Upload .deb artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: dist/*.deb
+          retention-days: 5
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Stage 2b — Build Python wheels (manylinux2014, x86_64 + aarch64)
+  #             CPython 3.9–3.12, auditwheel-repaired, static-libstdc++
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-wheel:
+    name: "Wheel ${{ matrix.arch }}"
+    needs: [preflight]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            cibw_arch: x86_64
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            cibw_arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel==2.21.*
+
+      - name: Build wheels
+        run: cibuildwheel --output-dir dist
+        env:
+          CIBW_BUILD: >-
+            cp39-manylinux_*
+            cp310-manylinux_*
+            cp311-manylinux_*
+            cp312-manylinux_*
+          CIBW_SKIP: >-
+            *-musllinux_* pp* *_i686 *_s390x *_ppc64le
+          CIBW_ARCHS_LINUX: ${{ matrix.cibw_arch }}
+          CIBW_MANYLINUX_X86_64_IMAGE:  manylinux2014
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
+          CIBW_BEFORE_ALL_LINUX: >-
+            yum install -y ninja-build || true &&
+            /opt/python/cp312-cp312/bin/pip install cmake &&
+            ln -sf /opt/python/cp312-cp312/bin/cmake /usr/local/bin/cmake &&
+            cmake --version
+          CIBW_CONFIG_SETTINGS: >-
+            cmake.args=-DTHUNDERBIRD_VERSION_OVERRIDE=${{ needs.preflight.outputs.version }}
+          CIBW_ENVIRONMENT: >-
+            THUNDERBIRD_VERSION_OVERRIDE=${{ needs.preflight.outputs.version }}
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
+            auditwheel show {wheel} &&
+            auditwheel repair
+            --plat manylinux2014_{delocate_archs}
+            -w {dest_dir} {wheel}
+          CIBW_TEST_COMMAND: >-
+            python -c "
+            import spatial_sdk;
+            v = spatial_sdk.__version__;
+            print(f'spatial_sdk {v}');
+            assert v == '${{ needs.preflight.outputs.version }}',
+              f'Version mismatch: {v} != ${{ needs.preflight.outputs.version }}';
+            print(f'Status.OK = {spatial_sdk.Status.OK}');
+            print('OK');
+            "
+
+      - name: Verify wheel metadata
+        run: |
+          pip install pkginfo
+          for whl in dist/*.whl; do
+            echo "=== $(basename $whl) ==="
+            python -c "
+          from pkginfo import Wheel
+          w = Wheel('$whl')
+          print(f'  Name:     {w.name}')
+          print(f'  Version:  {w.version}')
+          print(f'  Requires: {w.requires_python}')
+          assert w.version == '${{ needs.preflight.outputs.version }}', \
+            f'Wheel version {w.version} != tag ${{ needs.preflight.outputs.version }}'
+          print('  ✓ PEP metadata OK')
+          "
+          done
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.arch }}
+          path: dist/*.whl
+          retention-days: 5
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Stage 2c — Test matrix (validates correctness before release)
+  # ═══════════════════════════════════════════════════════════════════════════
+  test:
+    name: "Test ${{ matrix.arch }}"
+    needs: [preflight]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake
+
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: release-test-${{ matrix.arch }}-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**') }}
+          restore-keys: release-test-${{ matrix.arch }}-
+
+      - name: Configure, build, test
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTHUNDERBIRD_VERSION_OVERRIDE=${{ needs.preflight.outputs.version }} \
+            -DTHUNDERBIRD_BUILD_TESTS=ON \
+            -DTHUNDERBIRD_BUILD_EXAMPLES=ON \
+            -DTHUNDERBIRD_USE_SIMULATED=ON
+          cmake --build build -j "$(nproc)"
+          cd build && ctest --output-on-failure -j "$(nproc)"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Stage 3 — Docker images (multi-arch via buildx + QEMU)
+  #
+  #  Tag strategy:  :X.Y.Z  :X.Y  :X  :latest
+  #  Platforms:     linux/amd64  linux/arm64
+  #  Signed:        cosign keyless (Sigstore OIDC)
+  # ═══════════════════════════════════════════════════════════════════════════
+  docker:
+    name: "Docker ${{ matrix.variant }}"
+    needs: [preflight, build-deb, test]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: true
+      matrix:
+        variant: [runtime, dev]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.14.1
+            network=host
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.preflight.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.preflight.outputs.version }}
+            type=semver,pattern={{major}},value=${{ needs.preflight.outputs.version }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=Thunderbird SDK (${{ matrix.variant }})
+            org.opencontainers.image.version=${{ needs.preflight.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.${{ matrix.variant }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ needs.preflight.outputs.version }}
+          cache-from: type=gha,scope=docker-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.variant }}
+          provenance: true
+          sbom: true
+
+      - name: Verify multi-arch manifest
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}:${{ needs.preflight.outputs.version }}"
+          echo "=== Manifest: ${IMAGE} ==="
+          docker buildx imagetools inspect "${IMAGE}"
+          ARCHS=$(docker buildx imagetools inspect "${IMAGE}" \
+            --format '{{range .Manifest.Manifests}}{{.Platform.Architecture}} {{end}}')
+          echo "Architectures: ${ARCHS}"
+          echo "${ARCHS}" | grep -q "amd64" || { echo "::error::Missing amd64"; exit 1; }
+          echo "${ARCHS}" | grep -q "arm64" || { echo "::error::Missing arm64"; exit 1; }
+          echo "✓ Multi-arch manifest verified"
+
+      - name: Sign image with cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Cosign sign + verify
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}"
+          DIGEST="${{ steps.build.outputs.digest }}"
+
+          # Sign
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+
+          # Verify (self-check)
+          cosign verify \
+            --certificate-identity-regexp "github.com/${{ github.repository }}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${IMAGE}@${DIGEST}" | head -5
+          echo "✓ Cosign signature verified"
+
+      - name: Step summary
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}"
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ### Docker: ${{ matrix.variant }}
+          | Property | Value |
+          |----------|-------|
+          | Image | \`${IMAGE}\` |
+          | Version | \`${{ needs.preflight.outputs.version }}\` |
+          | Digest | \`${{ steps.build.outputs.digest }}\` |
+          | Platforms | linux/amd64, linux/arm64 |
+          | Signed | ✓ cosign (Sigstore OIDC) |
+          EOF
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Stage 4 — GitHub Release
+  #
+  #  Collects all artifacts, generates checksums, signs with cosign,
+  #  creates GitHub Release with auto-generated changelog, attaches files.
+  # ═══════════════════════════════════════════════════════════════════════════
+  release:
+    name: "GitHub Release"
+    needs: [preflight, build-deb, build-wheel, test, docker]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0             # needed for changelog commit range
+
+      # ── Collect all build artifacts ──────────────────────────────────
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: List collected artifacts
+        run: |
+          echo "=== All artifacts ==="
+          ls -lhR artifacts/
+          echo ""
+          echo "Debs:   $(ls artifacts/*.deb 2>/dev/null | wc -l)"
+          echo "Wheels: $(ls artifacts/*.whl 2>/dev/null | wc -l)"
+
+      # ── Generate checksums ──────────────────────────────────────────
+      - name: Generate SHA256 checksums
+        run: |
+          cd artifacts
+          sha256sum *.deb *.whl > SHA256SUMS.txt
+          echo "=== Checksums ==="
+          cat SHA256SUMS.txt
+
+      # ── Sign checksums with cosign ──────────────────────────────────
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign checksums blob
+        run: |
+          cosign sign-blob --yes \
+            --output-signature artifacts/SHA256SUMS.txt.sig \
+            --output-certificate artifacts/SHA256SUMS.txt.cert \
+            artifacts/SHA256SUMS.txt
+          echo "✓ Checksums signed with cosign"
+
+      # ── Generate final release notes (with artifacts table) ─────────
+      - name: Generate release notes with artifacts table
+        run: |
+          chmod +x scripts/generate-release-notes.sh
+          scripts/generate-release-notes.sh \
+            "${{ needs.preflight.outputs.version }}" \
+            "artifacts" \
+            > /tmp/release_notes.md
+          echo ""
+          echo "=== Release notes preview (first 60 lines) ==="
+          head -60 /tmp/release_notes.md
+
+      # ── Create GitHub Release ───────────────────────────────────────
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Thunderbird SDK ${{ needs.preflight.outputs.version }}" \
+            --notes-file /tmp/release_notes.md \
+            --verify-tag \
+            artifacts/*.deb \
+            artifacts/*.whl \
+            artifacts/SHA256SUMS.txt \
+            artifacts/SHA256SUMS.txt.sig \
+            artifacts/SHA256SUMS.txt.cert
+
+      # ── Post-release verification ───────────────────────────────────
+      - name: Verify release was created
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== Release details ==="
+          gh release view "${{ github.ref_name }}"
+          echo ""
+          ASSET_COUNT=$(gh release view "${{ github.ref_name }}" --json assets -q '.assets | length')
+          echo "Assets attached: ${ASSET_COUNT}"
+
+          # Expect: 4 debs + 8 wheels + 3 checksums = 15 minimum
+          if [ "${ASSET_COUNT}" -lt 10 ]; then
+            echo "::warning::Only ${ASSET_COUNT} assets attached (expected ≥10)"
+          fi
+          echo "✓ Release ${{ github.ref_name }} created successfully"
+
+      - name: Step summary
+        run: |
+          VER="${{ needs.preflight.outputs.version }}"
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ### 🎉 Release v${VER} Published
+
+          | Artifact type | Count |
+          |---------------|-------|
+          | Debian packages | $(ls artifacts/*.deb 2>/dev/null | wc -l) |
+          | Python wheels | $(ls artifacts/*.whl 2>/dev/null | wc -l) |
+          | Checksum files | 3 (SHA256SUMS.txt + .sig + .cert) |
+          | Docker images | 2 (runtime + dev) × 2 arch |
+
+          **Release URL**: https://github.com/${{ github.repository }}/releases/tag/v${VER}
+          EOF

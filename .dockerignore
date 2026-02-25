@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Docker build context exclusions
+# ─────────────────────────────────────────────────────────────────────────────
+# Minimize context size for faster builds and smaller images.
+
+# Build artifacts (never ship host build artifacts)
+build/
+build_*/
+cmake-build-*/
+out/
+
+# Git metadata (not needed in image)
+.git/
+.gitignore
+.github/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test / debug artifacts
+*.tbrec
+recorder_result.txt
+Testing/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+*.whl
+.venv/
+venv/
+env/
+
+# Docker (avoid recursive context)
+docker/
+!docker/
+
+# Packaging outputs (not needed in Docker image)
+*.deb
+*.changes
+*.buildinfo
+
+# OS junk
+.DS_Store
+Thumbs.db

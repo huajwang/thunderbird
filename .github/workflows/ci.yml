@@ -1,0 +1,236 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Continuous Integration (every push + PR)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Runs on every push/PR to main.  NOT triggered by tags (release.yml handles
+# those).  Fast feedback loop: lint → build → test.
+# ─────────────────────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+    tags-ignore:
+      - "v*"
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: "${{ matrix.os }} / ${{ matrix.build_type }}"
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux-x64
+            runner: ubuntu-24.04
+            build_type: Release
+          - os: linux-x64-debug
+            runner: ubuntu-24.04
+            build_type: Debug
+          - os: linux-arm64
+            runner: ubuntu-24.04-arm
+            build_type: Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake
+
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: ci-${{ matrix.os }}-${{ matrix.build_type }}-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**') }}
+          restore-keys: ci-${{ matrix.os }}-${{ matrix.build_type }}-
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DTHUNDERBIRD_BUILD_TESTS=ON \
+            -DTHUNDERBIRD_BUILD_EXAMPLES=ON \
+            -DTHUNDERBIRD_USE_SIMULATED=ON
+
+      - name: Build
+        run: cmake --build build -j "$(nproc)"
+
+      - name: Verify compiled version
+        run: |
+          VER=$(grep '#define THUNDERBIRD_VERSION_STRING' build/sdk/include/thunderbird/version.h \
+                | sed 's/.*"\(.*\)"/\1/')
+          echo "Compiled version: ${VER}"
+          echo "### SDK version: \`${VER}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Test
+        run: cd build && ctest --output-on-failure -j "$(nproc)"
+
+  # ── Debian packaging smoke test (build .deb on Ubuntu 22.04) ───────────────
+  deb-smoke:
+    name: "Debian pkg smoke test"
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:22.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config g++ \
+            dpkg-dev debhelper devscripts fakeroot lintian \
+            ca-certificates git
+
+      - name: Stamp changelog
+        run: |
+          chmod +x scripts/update-changelog.sh scripts/extract-version.sh
+          scripts/update-changelog.sh
+
+      - name: Build .deb
+        run: dpkg-buildpackage -us -uc -b -d --jobs="$(nproc)"
+
+      - name: Lint packages
+        run: lintian ../*.deb || true
+
+      - name: Verify package split
+        run: |
+          echo "=== Runtime package ==="
+          dpkg-deb -c ../libthunderbird-sdk0_*.deb
+          echo ""
+          echo "=== Dev package ==="
+          dpkg-deb -c ../libthunderbird-sdk-dev_*.deb
+          echo ""
+          # Verify runtime has .so.* but NOT headers
+          dpkg-deb -c ../libthunderbird-sdk0_*.deb | grep -q 'libthunderbird_sdk.so.'
+          ! dpkg-deb -c ../libthunderbird-sdk0_*.deb | grep -q '/include/'
+          # Verify dev has headers and .a
+          dpkg-deb -c ../libthunderbird-sdk-dev_*.deb | grep -q '/include/thunderbird/'
+          dpkg-deb -c ../libthunderbird-sdk-dev_*.deb | grep -q 'libthunderbird_sdk.a'
+          echo "✓ Package split verified"
+
+  # ── Python wheel smoke test (single arch, single Python, x86_64) ──────────
+  wheel-smoke:
+    name: "Wheel smoke test"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel==2.21.*
+
+      - name: Build one wheel (cp312, x86_64, manylinux2014)
+        run: cibuildwheel --output-dir dist
+        env:
+          CIBW_BUILD: "cp312-manylinux_x86_64"
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+          CIBW_BEFORE_ALL_LINUX: >-
+            yum install -y ninja-build || true &&
+            /opt/python/cp312-cp312/bin/pip install cmake &&
+            ln -sf /opt/python/cp312-cp312/bin/cmake /usr/local/bin/cmake
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
+            auditwheel show {wheel} &&
+            auditwheel repair --plat manylinux2014_{delocate_archs} -w {dest_dir} {wheel}
+          CIBW_TEST_COMMAND: >-
+            python -c "
+            import spatial_sdk;
+            print(f'spatial_sdk {spatial_sdk.__version__}');
+            print(f'Status.OK = {spatial_sdk.Status.OK}');
+            info = spatial_sdk.DeviceInfo();
+            print(f'DeviceInfo: {info}');
+            print('OK — wheel smoke test passed');
+            "
+
+      - name: Verify wheel is manylinux2014 tagged
+        run: |
+          pip install pkginfo
+          WHL=$(ls dist/*.whl | head -1)
+          echo "Built: $(basename $WHL)"
+          python -c "
+          from pkginfo import Wheel
+          w = Wheel('$WHL')
+          print(f'Name:     {w.name}')
+          print(f'Version:  {w.version}')
+          fname = '$(basename $WHL)'
+          assert 'manylinux2014' in fname or 'manylinux_2_17' in fname, \
+            f'Wheel not tagged manylinux2014: {fname}'
+          print('✓ manylinux2014 tag verified')
+          "
+
+  # ── Docker image smoke test (single arch, native) ──────────────────────────
+  docker-smoke:
+    name: "Docker smoke test"
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [runtime, dev]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.variant }} image (native arch only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.${{ matrix.variant }}
+          platforms: linux/amd64
+          load: true
+          tags: thunderbird-${{ matrix.variant }}:smoke
+          build-args: |
+            VERSION=0.0.0-ci
+          cache-from: type=gha,scope=ci-docker-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=ci-docker-${{ matrix.variant }}
+
+      - name: Verify runtime image
+        if: matrix.variant == 'runtime'
+        run: |
+          echo "=== Image size ==="
+          docker images thunderbird-runtime:smoke --format '{{.Size}}'
+
+          echo "=== Shared library present ==="
+          docker run --rm thunderbird-runtime:smoke \
+            sh -c 'ldconfig -p | grep thunderbird'
+
+          echo "=== No build tools (minimal) ==="
+          ! docker run --rm thunderbird-runtime:smoke which gcc 2>/dev/null
+          echo "✓ Runtime image verified"
+
+      - name: Verify dev image
+        if: matrix.variant == 'dev'
+        run: |
+          echo "=== Image size ==="
+          docker images thunderbird-dev:smoke --format '{{.Size}}'
+
+          echo "=== SDK installed ==="
+          docker run --rm thunderbird-dev:smoke \
+            pkg-config --modversion thunderbird-sdk
+
+          echo "=== Headers present ==="
+          docker run --rm thunderbird-dev:smoke \
+            test -f /usr/include/thunderbird/thunderbird.h
+
+          echo "=== Build tools available ==="
+          docker run --rm thunderbird-dev:smoke cmake --version
+          docker run --rm thunderbird-dev:smoke g++ --version | head -1
+
+          echo "=== Tests pass ==="
+          docker run --rm thunderbird-dev:smoke \
+            sh -c 'cd /thunderbird/build && ctest --output-on-failure -j $(nproc)'
+
+          echo "✓ Dev image verified"

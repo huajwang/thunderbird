@@ -26,6 +26,7 @@
 #include <pybind11/chrono.h>
 
 #include "thunderbird/thunderbird.h"
+#include "thunderbird/version.h"
 
 #include <optional>
 #include <memory>
@@ -100,6 +101,12 @@ static py::array_t<float> make_vec3(const std::array<float, 3>& v) {
 
 PYBIND11_MODULE(_spatial_sdk_core, m) {
     m.doc() = "Thunderbird Spatial SDK — Python bindings";
+
+    // ── Version constant (baked in at compile time from CMake) ──────────
+    m.attr("THUNDERBIRD_VERSION") = THUNDERBIRD_VERSION_STRING;
+    m.attr("THUNDERBIRD_VERSION_MAJOR") = THUNDERBIRD_VERSION_MAJOR;
+    m.attr("THUNDERBIRD_VERSION_MINOR") = THUNDERBIRD_VERSION_MINOR;
+    m.attr("THUNDERBIRD_VERSION_PATCH") = THUNDERBIRD_VERSION_PATCH;
 
     // =====================================================================
     //  Status enum

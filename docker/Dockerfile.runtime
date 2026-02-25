@@ -1,0 +1,98 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Runtime Docker image (multi-arch: linux/amd64, linux/arm64)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Minimal image containing ONLY the shared library (.so.*).
+# Suitable for deploying applications that link against the SDK at runtime.
+#
+# Multi-arch build:
+#   docker buildx build --platform linux/amd64,linux/arm64 \
+#     --build-arg VERSION=1.2.3 \
+#     -f docker/Dockerfile.runtime -t ghcr.io/thunderbird-sdk/thunderbird-runtime:1.2.3 .
+#
+# Single-arch local build:
+#   docker build --build-arg VERSION=0.1.0 \
+#     -f docker/Dockerfile.runtime -t thunderbird-runtime .
+#
+# Image contents:
+#   /usr/lib/<multiarch>/libthunderbird_sdk.so.X.Y.Z
+#   /usr/lib/<multiarch>/libthunderbird_sdk.so.X  (soname symlink)
+#
+# Size target: ~30 MB (Ubuntu 24.04 minimal + shared lib)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Stage 1: Build — compile SDK from source with full toolchain
+# ═══════════════════════════════════════════════════════════════════════════════
+FROM ubuntu:24.04 AS builder
+
+ARG VERSION=0.1.0
+ARG DEBIAN_FRONTEND=noninteractive
+
+# Install build toolchain (single layer, sorted, cleaned)
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        pkg-config && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+# Copy only what the build needs — ordered from least to most frequently
+# changed to maximise layer cache hits during development.
+COPY CMakeLists.txt .
+COPY sdk/ sdk/
+COPY tests/ tests/
+
+# Detect multi-arch triplet for proper library install paths
+# (e.g. x86_64-linux-gnu, aarch64-linux-gnu)
+RUN MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
+    echo "Building for: ${MULTIARCH}" && \
+    cmake -S . -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_LIBRARY_ARCHITECTURE=${MULTIARCH} \
+        -DTHUNDERBIRD_VERSION_OVERRIDE=${VERSION} \
+        -DTHUNDERBIRD_BUILD_TESTS=ON \
+        -DTHUNDERBIRD_BUILD_EXAMPLES=OFF \
+        -DTHUNDERBIRD_BUILD_PYTHON=OFF \
+        -DTHUNDERBIRD_USE_SIMULATED=ON && \
+    cmake --build build -j "$(nproc)" && \
+    cd build && ctest --output-on-failure -j "$(nproc)" && \
+    cd /src && \
+    DESTDIR=/staging cmake --install build --component runtime && \
+    echo "=== Staged runtime files ===" && \
+    find /staging -type f | head -20
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Stage 2: Runtime — minimal image with only the shared library
+# ═══════════════════════════════════════════════════════════════════════════════
+FROM ubuntu:24.04 AS runtime
+
+ARG VERSION=0.1.0
+
+LABEL org.opencontainers.image.title="Thunderbird SDK Runtime"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.description="Thunderbird multi-sensor SDK — shared library only"
+LABEL org.opencontainers.image.source="https://github.com/thunderbird-sdk/thunderbird"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.vendor="Thunderbird SDK"
+
+# No extra packages needed — just the base Ubuntu libs (libc, libstdc++, etc.)
+
+# Copy only the staged runtime component (shared lib + soname symlink)
+COPY --from=builder /staging/usr/ /usr/
+
+# Refresh the dynamic linker cache so the library is discoverable
+RUN ldconfig && \
+    ldconfig -p | grep thunderbird
+
+# Non-root user for security
+RUN useradd --system --no-create-home thunderbird
+USER thunderbird
+
+# Verify the shared library is loadable
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD ldconfig -p | grep -q libthunderbird_sdk || exit 1

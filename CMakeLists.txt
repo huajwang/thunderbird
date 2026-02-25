@@ -1,6 +1,28 @@
 cmake_minimum_required(VERSION 3.16)
 project(thunderbird_sdk VERSION 0.1.0 LANGUAGES CXX)
 
+# ── Version override (CI injects from Git tag) ──────────────────────────────
+# Usage: cmake -DTHUNDERBIRD_VERSION_OVERRIDE=1.2.3 ..
+# If set, overrides the project(VERSION) for all downstream consumers.
+if(DEFINED THUNDERBIRD_VERSION_OVERRIDE)
+    # Validate format
+    if(NOT THUNDERBIRD_VERSION_OVERRIDE MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+        message(FATAL_ERROR "THUNDERBIRD_VERSION_OVERRIDE must be X.Y.Z, got: ${THUNDERBIRD_VERSION_OVERRIDE}")
+    endif()
+    set(PROJECT_VERSION "${THUNDERBIRD_VERSION_OVERRIDE}")
+    string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$" _ver_match "${THUNDERBIRD_VERSION_OVERRIDE}")
+    set(PROJECT_VERSION_MAJOR "${CMAKE_MATCH_1}")
+    set(PROJECT_VERSION_MINOR "${CMAKE_MATCH_2}")
+    set(PROJECT_VERSION_PATCH "${CMAKE_MATCH_3}")
+    set(thunderbird_sdk_VERSION "${PROJECT_VERSION}")
+    set(thunderbird_sdk_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+    set(thunderbird_sdk_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+    set(thunderbird_sdk_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+    message(STATUS "Version override: ${PROJECT_VERSION} (from THUNDERBIRD_VERSION_OVERRIDE)")
+else()
+    message(STATUS "Version: ${PROJECT_VERSION} (from project() directive)")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

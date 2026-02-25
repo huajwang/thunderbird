@@ -1,0 +1,141 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird Spatial SDK — Python wheel build (scikit-build-core + pybind11)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Local build:   pip install .
+# Dev install:   pip install -e . --no-build-isolation
+# Build wheel:   pip wheel . --no-deps -w dist/
+# CI:            cibuildwheel --output-dir dist/
+# ─────────────────────────────────────────────────────────────────────────────
+
+[build-system]
+requires = ["scikit-build-core>=0.9", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+# ── Project metadata (PEP 621) ──────────────────────────────────────────────
+[project]
+name = "spatial-sdk"
+dynamic = ["version"]
+description = "Thunderbird multi-sensor SDK — Python bindings for LiDAR + IMU + Camera"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+keywords = ["lidar", "imu", "camera", "sensor", "sdk", "robotics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: System :: Hardware",
+    "Operating System :: POSIX :: Linux",
+    "Typing :: Typed",
+]
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.urls]
+Homepage = "https://github.com/thunderbird-sdk/thunderbird"
+Repository = "https://github.com/thunderbird-sdk/thunderbird"
+Documentation = "https://github.com/thunderbird-sdk/thunderbird#readme"
+Issues = "https://github.com/thunderbird-sdk/thunderbird/issues"
+
+# ── scikit-build-core configuration ──────────────────────────────────────────
+[tool.scikit-build]
+cmake.build-type = "Release"
+cmake.args = [
+    "-DTHUNDERBIRD_BUILD_PYTHON=ON",
+    "-DTHUNDERBIRD_BUILD_TESTS=OFF",
+    "-DTHUNDERBIRD_BUILD_EXAMPLES=OFF",
+    "-DTHUNDERBIRD_USE_SIMULATED=ON",
+]
+wheel.packages = ["sdk/python/spatial_sdk"]
+install.components = ["python"]
+
+# Minimum CMake — scikit-build-core downloads if system version is too old
+cmake.minimum-version = "3.16"
+
+# ── Version: extracted from CMakeLists.txt project(VERSION X.Y.Z) ───────────
+# In CI the tag matches CMakeLists.txt (verified by preflight).
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "CMakeLists.txt"
+regex = 'project\(.*VERSION (?P<value>[0-9]+\.[0-9]+\.[0-9]+)'
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  cibuildwheel — production multi-arch manylinux wheel builds
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Builds PEP 599 (manylinux2014) wheels for:
+#   • CPython 3.9, 3.10, 3.11, 3.12
+#   • x86_64 + aarch64
+#
+# Pipeline: compile C++ core → link pybind11 extension (static libstdc++)
+#           → auditwheel repair → PEP-compliant manylinux2014 wheel
+# ─────────────────────────────────────────────────────────────────────────────
+
+[tool.cibuildwheel]
+# Build only manylinux CPython wheels (no musllinux, no PyPy)
+build = [
+    "cp39-manylinux_*",
+    "cp310-manylinux_*",
+    "cp311-manylinux_*",
+    "cp312-manylinux_*",
+]
+skip = [
+    "*-musllinux_*",    # musl not supported (yet)
+    "pp*",              # no PyPy
+    "*_i686",           # no 32-bit x86
+    "*_s390x",          # no s390x
+    "*_ppc64le",        # no ppc64le
+]
+
+# PEP 599 manylinux2014 — CentOS 7 based, glibc ≥ 2.17
+# Provides devtoolset-12 (GCC 12.x) with full C++20 support
+manylinux-x86_64-image  = "manylinux2014"
+manylinux-aarch64-image = "manylinux2014"
+
+# Smoke test: import, version check, basic functionality
+test-command = """python -c "
+import spatial_sdk
+print(f'spatial_sdk {spatial_sdk.__version__}')
+print(f'Status.OK = {spatial_sdk.Status.OK}')
+dev_info = spatial_sdk.DeviceInfo()
+print(f'DeviceInfo: {dev_info}')
+print('OK — wheel smoke test passed')
+" """
+
+# Let the build env reach THUNDERBIRD_VERSION_OVERRIDE for CMake
+environment-pass = ["THUNDERBIRD_VERSION_OVERRIDE"]
+
+# ── Linux-specific ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+[tool.cibuildwheel.linux]
+
+# Install cmake + ninja in the manylinux container (system-level, once)
+before-all = [
+    "yum install -y ninja-build || true",
+    "/opt/python/cp312-cp312/bin/pip install cmake",
+    "ln -sf /opt/python/cp312-cp312/bin/cmake /usr/local/bin/cmake",
+    "cmake --version",
+]
+
+# auditwheel repair strategy:
+#   1. Show the platform tag analysis (logged for debugging)
+#   2. Repair: bundle non-whitelisted shared libs, tag as manylinux2014
+#   auditwheel whitelists libstdc++.so.6 for manylinux2014, but we
+#   statically link libstdc++ (via CMake -static-libstdc++) so there is
+#   no runtime dependency on the host's libstdc++ version.
+repair-wheel-command = [
+    "auditwheel show {wheel}",
+    "auditwheel repair --plat manylinux2014_{delocate_archs} -w {dest_dir} {wheel}",
+]
+
+# Pass THUNDERBIRD_VERSION_OVERRIDE into scikit-build-core's cmake invocation
+# via config-settings (cibuildwheel respects CIBW_CONFIG_SETTINGS)
+# This is handled at the GH Actions level via CIBW_CONFIG_SETTINGS env var.

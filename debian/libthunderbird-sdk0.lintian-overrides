@@ -1,0 +1,2 @@
+# Library is new — no symbols file yet; managed via shlibs
+libthunderbird-sdk0: no-symbols-control-file

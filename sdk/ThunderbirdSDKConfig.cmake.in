@@ -1,0 +1,13 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/ThunderbirdSDKTargets.cmake")
+
+# Provide convenience aliases
+if(NOT TARGET Thunderbird::SDK)
+    add_library(Thunderbird::SDK ALIAS Thunderbird::thunderbird_sdk)
+endif()
+
+check_required_components(ThunderbirdSDK)

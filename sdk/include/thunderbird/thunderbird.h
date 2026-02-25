@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 
+#include "thunderbird/version.h"
 #include "thunderbird/types.h"
 #include "thunderbird/transport.h"
 #include "thunderbird/protocol.h"

@@ -1,0 +1,10 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+libdir=${prefix}/lib/@CMAKE_LIBRARY_ARCHITECTURE@
+includedir=${prefix}/include
+
+Name: thunderbird-sdk
+Description: Thunderbird multi-sensor SDK (LiDAR + IMU + Camera)
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lthunderbird_sdk
+Libs.private: -lpthread
+Cflags: -I${includedir}
