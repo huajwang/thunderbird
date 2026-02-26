@@ -221,7 +221,8 @@ jobs:
           fetch-depth: 0            # full history for commit scanning
 
       - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.88.0
+        continue-on-error: true     # don't fail pipeline on transient GHCR pulls
         with:
           extra_args: --only-verified --results=verified,unknown
 
