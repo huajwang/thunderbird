@@ -66,7 +66,9 @@ CpuMetrics read_cpu_usage(double wall_time_s) noexcept {
 }
 #else
 /// Stub for non-Linux platforms.
+[[maybe_unused]]
 MemoryMetrics read_proc_memory() noexcept { return {}; }
+[[maybe_unused]]
 CpuMetrics read_cpu_usage(double wall_time_s) noexcept {
     CpuMetrics c{};
     c.wall_time_s = wall_time_s;

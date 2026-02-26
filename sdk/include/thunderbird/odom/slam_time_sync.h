@@ -106,6 +106,7 @@
 #include <functional>
 #include <mutex>
 #include <optional>
+#include <thread>
 #include <vector>
 
 namespace thunderbird::odom {

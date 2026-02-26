@@ -202,7 +202,7 @@ struct AcmeSlamEngine::Impl {
     RingBuffer<std::shared_ptr<const Pose6D>,     SlamEngineConfig::kPoseRingCapacity>   pose_ring;
 
     // ── Time synchronisation ────────────────────────────────────────────
-    SlamTimeSync time_sync;
+    std::unique_ptr<SlamTimeSync> time_sync;
 
     // ── ESIKF internals (only accessed from worker thread) ──────────────
     internal::EsikfEngine   esikf;
@@ -279,7 +279,7 @@ struct AcmeSlamEngine::Impl {
         while (auto item = imu_ring.pop()) {
             did_work = true;
             const auto& [sample, host_ns] = *item;
-            time_sync.feed_imu(sample, host_ns);
+            time_sync->feed_imu(sample, host_ns);
 
             // If still initialising, accumulate for gravity alignment.
             if (tracking_status.load(std::memory_order_relaxed) ==
@@ -339,7 +339,7 @@ struct AcmeSlamEngine::Impl {
         while (auto item = cloud_ring.pop()) {
             did_work = true;
             const auto& [cloud, host_ns] = *item;
-            time_sync.feed_lidar(cloud, host_ns);
+            time_sync->feed_lidar(cloud, host_ns);
         }
         return did_work;
     }
@@ -347,7 +347,7 @@ struct AcmeSlamEngine::Impl {
     // ── Phase 3: assemble ScanMeasurement → ESIKF update ───────────────
 
     bool tryProcessScan() {
-        auto meas_opt = time_sync.poll_next_measurement();
+        auto meas_opt = time_sync->poll_next_measurement();
         if (!meas_opt) return false;
 
         auto& meas = *meas_opt;
@@ -495,7 +495,7 @@ struct AcmeSlamEngine::Impl {
         while (pose_ring.pop()) {}
 
         // Reset time sync.
-        time_sync.reset();
+        time_sync->reset();
 
         // Reset estimator state.
         esikf.reset();
@@ -541,7 +541,7 @@ bool AcmeSlamEngine::initialize(const SlamEngineConfig& config) {
     tsc.lidar_rate_hz            = config.lidar_rate_hz;
     tsc.enable_drift_compensation = config.enable_drift_compensation;
     tsc.sort_window_ns           = config.sort_window_ns;
-    impl_->time_sync = SlamTimeSync(tsc);
+    impl_->time_sync = std::make_unique<SlamTimeSync>(tsc);
 
     // ── Configure ESIKF ─────────────────────────────────────────────────
     impl_->esikf.set_noise_model(config.imu_noise);

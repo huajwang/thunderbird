@@ -36,13 +36,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 
-#include <cstdint>
-#include <cstddef>
 #include <array>
-#include <vector>
-#include <memory>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <span>
+#include <vector>
 
 namespace thunderbird::odom {
 
@@ -423,8 +424,8 @@ struct SlamOutputRecordHeader {
     uint8_t       _pad[4];           // align to 8-byte boundary
 };
 
-static_assert(sizeof(SlamOutputRecordHeader) == 544,
-              "SlamOutputRecordHeader must be 544 bytes");
+static_assert(sizeof(SlamOutputRecordHeader) == 536,
+              "SlamOutputRecordHeader must be 536 bytes");
 
 #pragma pack(pop)
 
