@@ -945,10 +945,8 @@ void test_snapshot_completeness() {
 //  Reporting utilities (from slam_health.cpp)
 // ═════════════════════════════════════════════════════════════════════════════
 
-// Forward declarations of utility functions (defined in slam_health.cpp).
-std::string fault_flags_to_string(FaultFlags flags);
-std::string health_snapshot_to_json(const SlamHealthSnapshot& s);
-std::string health_snapshot_to_text(const SlamHealthSnapshot& s);
+// These functions are defined in thunderbird::odom (slam_health.cpp) and
+// brought into scope by the `using namespace thunderbird::odom` above.
 
 void test_fault_flags_to_string() {
     TEST_CASE("fault_flags_to_string");
