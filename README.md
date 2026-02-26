@@ -348,12 +348,39 @@ ls ../*.deb
 # libthunderbird-sdk-dev_0.1.0_amd64.deb
 ```
 
-**Install and use:**
+**Install from GitHub Release:**
 
 ```bash
-# Install runtime + dev
-sudo dpkg -i ../libthunderbird-sdk0_*.deb ../libthunderbird-sdk-dev_*.deb
+# Download the latest release .deb packages (replace VERSION and ARCH)
+# ARCH is typically amd64 or arm64
+VERSION="0.1.0"
+ARCH="amd64"
+gh release download "v${VERSION}" \
+  --repo huajwang/thunderbird \
+  --pattern "libthunderbird-sdk0_${VERSION}_${ARCH}.deb" \
+  --pattern "libthunderbird-sdk-dev_${VERSION}_${ARCH}.deb"
 
+# Install runtime + dev
+sudo dpkg -i libthunderbird-sdk0_*.deb libthunderbird-sdk-dev_*.deb
+```
+
+Or download manually from the [Releases](https://github.com/huajwang/thunderbird/releases) page and then:
+
+```bash
+# Install the downloaded .deb files
+sudo dpkg -i libthunderbird-sdk0_*.deb libthunderbird-sdk-dev_*.deb
+```
+
+**Install from local build:**
+
+```bash
+# After running dpkg-buildpackage, packages are in the parent directory
+sudo dpkg -i ../libthunderbird-sdk0_*.deb ../libthunderbird-sdk-dev_*.deb
+```
+
+**Use the installed SDK:**
+
+```bash
 # Use via pkg-config
 g++ my_app.cpp $(pkg-config --cflags --libs thunderbird-sdk) -o my_app
 
