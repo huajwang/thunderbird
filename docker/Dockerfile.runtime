@@ -30,12 +30,16 @@ ARG VERSION=0.1.0
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install build toolchain (single layer, sorted, cleaned)
-RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends \
+RUN for i in 1 2 3; do \
+      apt-get update -qq && break || sleep 5; \
+    done && \
+    for i in 1 2 3; do \
+      apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
         cmake \
-        pkg-config && \
+        pkg-config && break || sleep 5; \
+    done && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
