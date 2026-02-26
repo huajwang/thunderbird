@@ -304,7 +304,7 @@ jobs:
             ln -sf /opt/python/cp312-cp312/bin/cmake /usr/local/bin/cmake &&
             cmake --version
           CIBW_CONFIG_SETTINGS: >-
-            cmake.args=-DTHUNDERBIRD_VERSION_OVERRIDE=${{ needs.preflight.outputs.version }}
+            cmake.define.THUNDERBIRD_VERSION_OVERRIDE=${{ needs.preflight.outputs.version }}
           CIBW_ENVIRONMENT: >-
             THUNDERBIRD_VERSION_OVERRIDE=${{ needs.preflight.outputs.version }}
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
