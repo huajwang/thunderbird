@@ -313,14 +313,8 @@ jobs:
             --plat manylinux2014_$(uname -m)
             -w {dest_dir} {wheel}
           CIBW_TEST_COMMAND: >-
-            python -c "
-            import spatial_sdk;
-            v = spatial_sdk.__version__;
-            print(f'spatial_sdk {v}');
-            assert v == '${{ needs.preflight.outputs.version }}', f'Version mismatch: {v} != ${{ needs.preflight.outputs.version }}';
-            print(f'Status.OK = {spatial_sdk.Status.OK}');
-            print('OK');
-            "
+            python -c
+            "import spatial_sdk; v = spatial_sdk.__version__; print(f'spatial_sdk {v}'); assert v == '${{ needs.preflight.outputs.version }}', f'Version mismatch: {v} != ${{ needs.preflight.outputs.version }}'; print(f'Status.OK = {spatial_sdk.Status.OK}'); print('OK')"
 
       - name: Verify wheel metadata
         run: |
