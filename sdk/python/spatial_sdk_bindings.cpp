@@ -42,14 +42,15 @@ namespace td = thunderbird::data;
 /// Build a NumPy structured array from a vector of PointXYZIT (with copy).
 static py::array make_points_array(const std::vector<td::PointXYZIT>& pts) {
     // Define the dtype once.
-    py::dtype dt = py::dtype::from_args(py::make_tuple(
-        py::make_tuple("x",         py::format_descriptor<float>::format()),
-        py::make_tuple("y",         py::format_descriptor<float>::format()),
-        py::make_tuple("z",         py::format_descriptor<float>::format()),
-        py::make_tuple("intensity", py::format_descriptor<float>::format()),
-        py::make_tuple("timestamp_offset_ns",
-                       py::format_descriptor<int32_t>::format())
-    ));
+    // NumPy requires a *list* of (name, format) tuples, not a tuple of tuples.
+    py::list fields;
+    fields.append(py::make_tuple("x",         py::format_descriptor<float>::format()));
+    fields.append(py::make_tuple("y",         py::format_descriptor<float>::format()));
+    fields.append(py::make_tuple("z",         py::format_descriptor<float>::format()));
+    fields.append(py::make_tuple("intensity", py::format_descriptor<float>::format()));
+    fields.append(py::make_tuple("timestamp_offset_ns",
+                       py::format_descriptor<int32_t>::format()));
+    py::dtype dt = py::dtype::from_args(fields);
 
     const auto n = static_cast<py::ssize_t>(pts.size());
     py::array arr(dt, {n}, {});
