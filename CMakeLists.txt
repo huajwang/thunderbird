@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(thunderbird_sdk VERSION 0.1.3 LANGUAGES CXX)
+project(thunderbird_sdk VERSION 0.1.4 LANGUAGES CXX)
 
 # ── Version override (CI injects from Git tag) ──────────────────────────────
 # Usage: cmake -DTHUNDERBIRD_VERSION_OVERRIDE=1.2.3 ..
