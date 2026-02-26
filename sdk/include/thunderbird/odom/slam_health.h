@@ -374,7 +374,8 @@ inline double eigenvalue_ratio_3x3(const double s[6]) noexcept {
     const double r2 = (2.0*p*p*p - 9.0*p*q + 27.0*r) / 54.0;
     const double q2_32 = q2 * std::sqrt(q2);
 
-    double cos_arg = r2 / q2_32;
+    // Trigonometric identity: cos(3θ) = -r2 / q2^(3/2)
+    double cos_arg = -r2 / q2_32;
     // Clamp to [-1, 1] for numerical safety.
     if (cos_arg > 1.0) cos_arg = 1.0;
     if (cos_arg < -1.0) cos_arg = -1.0;
@@ -812,7 +813,9 @@ private:
 
         // ── State transitions ───────────────────────────────────────────
         const int n_faults = fault_count(faults);
+        (void)n_faults; // used below in switch
         const HealthState prev_state = state_;
+        (void)prev_state; // reserved for future logging
 
         switch (state_) {
             case HealthState::Nominal:
@@ -952,5 +955,18 @@ private:
     EmergencyCallback    emergency_cb_;
     HealthUpdateCallback update_cb_;
 };
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Reporting utilities (implemented in slam_health.cpp)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Convert fault flags to a human-readable "|"-separated string.
+std::string fault_flags_to_string(FaultFlags flags);
+
+/// Serialise a health snapshot to JSON.
+std::string health_snapshot_to_json(const SlamHealthSnapshot& s);
+
+/// Serialise a health snapshot to human-readable text.
+std::string health_snapshot_to_text(const SlamHealthSnapshot& s);
 
 } // namespace thunderbird::odom

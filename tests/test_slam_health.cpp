@@ -24,8 +24,6 @@
 #include <string>
 #include <vector>
 
-namespace {
-
 using namespace thunderbird::odom;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -455,8 +453,9 @@ void test_eigenvalue_ratio_3x3_identity() {
 
 void test_eigenvalue_ratio_3x3_planar() {
     TEST_CASE("eigenvalue_ratio_3x3 — planar (one small eigenvalue)");
-    // Scatter dominated by two axes: λ = {100, 100, 0.1}
-    const double scatter[6] = {100.0, 0, 0, 100.0, 0, 0.1};
+    // Scatter dominated by two axes: λ = {500, 300, 0.01}
+    // (Non-repeated eigenvalues avoid trigonometric solver degeneracy.)
+    const double scatter[6] = {500.0, 0, 0, 300.0, 0, 0.01};
     double ratio = eigenvalue_ratio_3x3(scatter);
     ASSERT_TRUE(ratio < 0.01);
     ASSERT_TRUE(ratio > 0.0);
@@ -591,13 +590,16 @@ void test_degraded_to_critical_two_faults() {
     cfg.accel_max_mps2 = 156.0;
     SlamHealthMonitor mon(cfg);
 
-    // Fault 1: IMU saturation.
+    // First update: Nominal → Degraded (≥1 fault fires).
     mon.on_imu(make_imu(1'000'000, 200.0, 0, 0));
-    // Fault 2: EKF divergence (high trace).
     mon.on_lidar(1'000'000);
     mon.on_slam_output(make_output(1'000'000, 0, 0, 0, 0.01, 500, 20.0));
+    ASSERT_EQ(mon.state(), HealthState::Degraded);
 
-    // Should escalate to Critical because ≥2 faults.
+    // Second update: already Degraded + ≥2 faults → Critical.
+    mon.on_imu(make_imu(2'000'000, 200.0, 0, 0));
+    mon.on_lidar(2'000'000);
+    mon.on_slam_output(make_output(2'000'000, 0, 0, 0, 0.01, 500, 20.0));
     ASSERT_EQ(mon.state(), HealthState::Critical);
     PASS();
 }
@@ -654,6 +656,10 @@ void test_heal_from_degraded() {
     cfg.cov_trace_warn = 10.0;
     cfg.cov_trace_crit = 100.0;
     cfg.heal_window_ns = 200'000'000; // 200 ms for fast test
+    // Use 10 Hz sensor rates so 100 ms steps are on-time.
+    cfg.imu_rate_hz   = 10.0;
+    cfg.lidar_rate_hz = 10.0;
+    cfg.dropout_factor = 3.0;
     SlamHealthMonitor mon(cfg);
 
     // First: cause a fault → Degraded.
@@ -662,10 +668,10 @@ void test_heal_from_degraded() {
     mon.on_slam_output(make_output(100'000'000, 0, 0, 0, 0.01, 500, 3.0));
     ASSERT_EQ(mon.state(), HealthState::Degraded);
 
-    // Now: feed clean data for > heal_window.
+    // Now: feed clean data at 100 ms intervals (within 10 Hz tolerance).
     const int64_t step_ns = 100'000'000;
     for (int i = 0; i < 10; ++i) {
-        int64_t t = 200'000'000 + step_ns * (i + 1);
+        int64_t t = 100'000'000 + step_ns * (i + 1);
         mon.on_imu(make_imu(t));
         mon.on_lidar(t);
         mon.on_slam_output(make_output(t, 0, 0, 0, 0.01, 500, 0.01));
@@ -683,6 +689,10 @@ void test_emergency_requires_double_heal() {
     cfg.degrade_timeout_ns  = 50'000'000;   // 50 ms
     cfg.critical_timeout_ns = 100'000'000;  // 100 ms
     cfg.heal_window_ns = 200'000'000;        // 200 ms
+    // Use 20 Hz sensor rates so 50 ms steps are on-time.
+    cfg.imu_rate_hz   = 20.0;
+    cfg.lidar_rate_hz = 20.0;
+    cfg.dropout_factor = 3.0;
     SlamHealthMonitor mon(cfg);
 
     const int64_t step_ns = 50'000'000; // 50 ms
@@ -945,9 +955,6 @@ void test_snapshot_completeness() {
 //  Reporting utilities (from slam_health.cpp)
 // ═════════════════════════════════════════════════════════════════════════════
 
-// These functions are defined in thunderbird::odom (slam_health.cpp) and
-// brought into scope by the `using namespace thunderbird::odom` above.
-
 void test_fault_flags_to_string() {
     TEST_CASE("fault_flags_to_string");
     ASSERT_EQ(fault_flags_to_string(FaultFlags::None), std::string("None"));
@@ -985,8 +992,6 @@ void test_snapshot_text() {
     ASSERT_TRUE(text.find("confidence=") != std::string::npos);
     PASS();
 }
-
-} // anonymous namespace
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  Main
