@@ -1,0 +1,85 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# acme_slamd — systemd service unit
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Install:
+#   sudo cp acme-slamd.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now acme-slamd
+#
+# Logs:
+#   journalctl -u acme-slamd -f
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=Thunderbird SLAM Daemon (acme_slamd)
+Documentation=https://github.com/huajwang/thunderbird
+After=network-online.target
+Wants=network-online.target
+
+# Optional: wait for the sensor device to be available.
+# After=dev-thunderbird0.device
+
+[Service]
+# ── Type=notify: daemon calls sd_notify(READY=1) when initialised ────────
+Type=notify
+NotifyAccess=main
+
+# ── Executable ───────────────────────────────────────────────────────────
+ExecStart=/usr/bin/acme_slamd --config /etc/acme_slamd/config.yaml
+
+# ── Reload (SIGHUP → reload log level + health thresholds) ──────────────
+ExecReload=/bin/kill -HUP $MAINPID
+
+# ── Watchdog ─────────────────────────────────────────────────────────────
+# The daemon sends WATCHDOG=1 every 5s.  If systemd doesn't receive it
+# within 15s, the service is considered hung and restarted.
+WatchdogSec=15
+
+# ── Restart policy ───────────────────────────────────────────────────────
+# Restart on crash or OOM kill.  On clean exit (code 0), stay down.
+Restart=on-failure
+RestartSec=3
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# ── Resource limits ──────────────────────────────────────────────────────
+# Cap resident memory to prevent OOM-killing other services.
+MemoryMax=1G
+MemoryHigh=768M
+
+# Real-time priority for the ESIKF thread.
+# Requires CAP_SYS_NICE or LimitRTPRIO.
+LimitRTPRIO=50
+CPUSchedulingPolicy=other
+
+# ── Security hardening ───────────────────────────────────────────────────
+# Run as dedicated user (create with: useradd -r -s /usr/sbin/nologin slamd)
+User=slamd
+Group=slamd
+
+# Restrict filesystem access.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+# Allow writes to config/state/log directories.
+ReadWritePaths=/var/lib/acme_slamd /var/log/acme_slamd /tmp/acme_slamd
+
+# Allow shared memory (required for POSIX shm_open).
+# /dev/shm is mounted automatically on most distros.
+ReadWritePaths=/dev/shm
+
+# ── Environment ──────────────────────────────────────────────────────────
+# Uncomment to override ZMQ thread count:
+# Environment=ZMQ_IO_THREADS=1
+
+# ── State directory ──────────────────────────────────────────────────────
+StateDirectory=acme_slamd
+LogsDirectory=acme_slamd
+RuntimeDirectory=acme_slamd
+
+[Install]
+WantedBy=multi-user.target

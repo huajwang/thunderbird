@@ -31,3 +31,12 @@ add_test(NAME Ros2Helpers COMMAND test_ros2_bridge)
 add_executable(test_recorder test_recorder.cpp)
 target_link_libraries(test_recorder PRIVATE thunderbird_sdk)
 add_test(NAME Recorder COMMAND test_recorder)
+
+add_executable(test_slam_benchmark test_slam_benchmark.cpp)
+target_link_libraries(test_slam_benchmark PRIVATE thunderbird_sdk Threads::Threads)
+target_compile_definitions(test_slam_benchmark PRIVATE THUNDERBIRD_SLAM_PROFILING=1)
+add_test(NAME SlamBenchmark COMMAND test_slam_benchmark --no-plans)
+
+add_executable(test_slam_health test_slam_health.cpp)
+target_link_libraries(test_slam_health PRIVATE thunderbird_sdk)
+add_test(NAME SlamHealth COMMAND test_slam_health)

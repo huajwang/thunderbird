@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(thunderbird_sdk VERSION 0.1.4 LANGUAGES CXX)
+project(thunderbird_sdk VERSION 0.2.0 LANGUAGES CXX)
 
 # ── Version override (CI injects from Git tag) ──────────────────────────────
 # Usage: cmake -DTHUNDERBIRD_VERSION_OVERRIDE=1.2.3 ..
@@ -32,6 +32,7 @@ option(THUNDERBIRD_BUILD_EXAMPLES  "Build example applications"         ON)
 option(THUNDERBIRD_BUILD_TESTS     "Build unit tests"                   ON)
 option(THUNDERBIRD_BUILD_PYTHON    "Build Python bindings (pybind11)"   OFF)
 option(THUNDERBIRD_BUILD_ROS2      "Build ROS 2 bridge package"         OFF)
+option(THUNDERBIRD_BUILD_SLAMD     "Build SLAM daemon (acme_slamd)"     OFF)
 option(THUNDERBIRD_USE_SIMULATED   "Use simulated sensor backends"      ON)
 
 # ── Compiler warnings ───────────────────────────────────────────────────────
@@ -60,6 +61,11 @@ endif()
 # ── ROS 2 bridge ────────────────────────────────────────────────────────────
 if(THUNDERBIRD_BUILD_ROS2)
     add_subdirectory(ros2_bridge)
+endif()
+
+# ── SLAM daemon ─────────────────────────────────────────────────────────────
+if(THUNDERBIRD_BUILD_SLAMD)
+    add_subdirectory(slamd)
 endif()
 
 # ── Tests ────────────────────────────────────────────────────────────────────

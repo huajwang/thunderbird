@@ -1,0 +1,133 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# acme_slamd — SLAM Daemon Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Default path: /etc/acme_slamd/config.yaml
+# Override:     acme_slamd --config /path/to/config.yaml
+#
+# All fields have sane defaults.  Only override what you need.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Sensor connection
+# ═══════════════════════════════════════════════════════════════════════════
+sensor:
+  # Connection URI:
+  #   "eth://192.168.1.100:7500"  — Ethernet
+  #   "usb://0"                   — USB
+  #   ""                          — simulated mode
+  device_uri: ""
+
+  # Expected sensor rates (for buffer sizing & gap detection).
+  imu_rate_hz:   400.0
+  lidar_rate_hz: 10.0
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  SLAM engine (forwarded to AcmeSlamEngine / SlamEngineConfig)
+# ═══════════════════════════════════════════════════════════════════════════
+slam:
+  # ── IMU noise model (continuous-time spectral densities) ───────────────
+  imu_noise:
+    gyro_noise:    1.0e-3    # rad/s/√Hz
+    accel_noise:   1.0e-2    # m/s²/√Hz
+    gyro_bias_rw:  1.0e-5    # rad/s²/√Hz
+    accel_bias_rw: 1.0e-4    # m/s³/√Hz
+
+  # ── LiDAR ↔ IMU extrinsic calibration ─────────────────────────────────
+  extrinsic:
+    # Rotation from LiDAR to IMU frame [w, x, y, z]
+    rotation:    [1.0, 0.0, 0.0, 0.0]
+    # Translation from LiDAR to IMU frame [x, y, z] (metres)
+    translation: [0.0, 0.0, 0.0]
+    # Refine online (the ESIKF will adjust the extrinsic)
+    refine_online: false
+
+  # ── ESIKF convergence ─────────────────────────────────────────────────
+  esikf:
+    max_iterations:      5
+    convergence_eps:     1.0e-3
+    plane_noise_sigma:   0.01     # metres
+    min_correspondences: 20
+    max_residual:        0.5
+
+  # ── Point deskewing ───────────────────────────────────────────────────
+  deskew:
+    enable: true
+    imu_integration_substeps: 1
+
+  # ── Gravity alignment / initialisation ────────────────────────────────
+  init:
+    gravity_duration_s:     1.0    # seconds of static IMU data
+    min_imu_samples:        200
+    gravity_tolerance:      0.5    # m/s² max accel stddev
+
+  # ── Map (ikd-Tree) ───────────────────────────────────────────────────
+  map:
+    voxel_resolution:        0.3   # metres
+    map_radius:              100.0 # metres
+    max_map_points:          500000
+    delete_ratio:            0.1
+    tree_rebalance_interval: 10    # scans
+
+  # ── Time sync ─────────────────────────────────────────────────────────
+  enable_drift_compensation: true
+  sort_window_ns: 5000000          # 5 ms
+
+  # ── Output ────────────────────────────────────────────────────────────
+  publish_propagated_poses: true   # emit Pose6D at IMU rate
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  IPC (shared memory + ZeroMQ)
+# ═══════════════════════════════════════════════════════════════════════════
+ipc:
+  # ── Shared memory (POSIX shm) for low-latency pose output ─────────────
+  enable_shm: true
+  shm_pose_name: "/acme_slamd_pose"
+  shm_pose_bytes: 4096
+
+  # ── ZeroMQ PUB/SUB for notifications + map snapshots ──────────────────
+  enable_zmq: true
+  zmq_pose_endpoint: "ipc:///tmp/acme_slamd/pose"
+  zmq_map_endpoint:  "ipc:///tmp/acme_slamd/map"
+  map_publish_hz: 1.0
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Health monitoring
+# ═══════════════════════════════════════════════════════════════════════════
+health:
+  health_check_hz:      1.0
+  cpu_warn_threshold:   0.80       # 80% of one core
+  drift_warn_threshold: 1000000.0  # 1 ms/s in ns/s
+
+  # systemd watchdog (must match WatchdogSec in the unit file)
+  enable_watchdog: true
+  watchdog_interval_us: 5000000    # 5 s (< WatchdogSec/2 = 7.5 s)
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Crash recovery / checkpointing
+# ═══════════════════════════════════════════════════════════════════════════
+checkpoint:
+  enable: true
+  directory: "/var/lib/acme_slamd"
+  filename:  "checkpoint.bin"
+  interval_s: 5.0                  # checkpoint every 5 seconds
+  max_age_s:  60.0                 # discard if older than 60 s
+  warm_restart_cov_scale: 10.0     # inflate covariance ×10 on warm restart
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Logging
+# ═══════════════════════════════════════════════════════════════════════════
+log:
+  # Minimum level: DEBUG, INFO, WARNING, ERR, CRIT, EMERG
+  level: INFO
+
+  # Optional file log (empty = stderr only, for journald).
+  # file_path: "/var/log/acme_slamd/slamd.log"
+  file_path: ""
+
+  # Log rotation (0 = disabled).
+  max_file_bytes: 52428800         # 50 MB
+  max_rotated_files: 3
+
+  # Rate-limit DEBUG messages: emit once per N scans.
+  debug_rate_limit: 10
