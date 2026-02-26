@@ -97,7 +97,7 @@ jobs:
           EOF
 
       - name: Install crane
-        uses: imjasonh/setup-crane@v0.4
+        uses: imjasonh/setup-crane@v0.5
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -155,7 +155,7 @@ jobs:
         variant: [runtime, dev]
     steps:
       - name: Install crane
-        uses: imjasonh/setup-crane@v0.4
+        uses: imjasonh/setup-crane@v0.5
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -250,7 +250,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0             # full history — need to resolve RC tag
 
@@ -305,12 +305,12 @@ jobs:
 
       # ── SLSA provenance for promoted artifacts ────────────────────────
       - name: Attest build provenance (debs)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: artifacts/*.deb
 
       - name: Attest build provenance (wheels)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: artifacts/*.whl
 

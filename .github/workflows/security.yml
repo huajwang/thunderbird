@@ -43,10 +43,10 @@ jobs:
       matrix:
         language: [c-cpp, python]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           # Use extended security + quality queries
@@ -60,7 +60,7 @@ jobs:
 
       - name: Cache ccache (CodeQL)
         if: matrix.language == 'c-cpp'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ccache
           key: ccache-codeql-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**', 'examples/**') }}
@@ -85,7 +85,7 @@ jobs:
           ccache --show-stats
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
 
@@ -100,7 +100,7 @@ jobs:
       contents: read
       pull-requests: write         # post review comments
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
@@ -120,7 +120,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Generate source SBOM (SPDX)
         uses: anchore/sbom-action@v0
@@ -137,7 +137,7 @@ jobs:
           format: cyclonedx-json
 
       - name: Upload SBOM artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom-source
           path: |
@@ -159,7 +159,7 @@ jobs:
       matrix:
         variant: [runtime, dev]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -177,7 +177,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=ci-docker-${{ matrix.variant }},ignore-error=true
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           image-ref: thunderbird-${{ matrix.variant }}:scan
           format: sarif
@@ -187,7 +187,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles(format('trivy-{0}.sarif', matrix.variant)) != ''
         with:
           sarif_file: trivy-${{ matrix.variant }}.sarif
@@ -201,7 +201,7 @@ jobs:
           format: spdx-json
 
       - name: Upload container SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom-container-${{ matrix.variant }}
           path: thunderbird-${{ matrix.variant }}.spdx.json
@@ -216,7 +216,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0            # full history for commit scanning
 
@@ -237,19 +237,19 @@ jobs:
       contents: read
       id-token: write              # for Scorecard API
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
       - name: Run OpenSSF Scorecard
-        uses: ossf/scorecard-action@v2.4.0
+        uses: ossf/scorecard-action@v2.4.3
         with:
           results_file: scorecard.sarif
           results_format: sarif
           publish_results: true
 
       - name: Upload Scorecard SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: scorecard.sarif

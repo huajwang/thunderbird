@@ -123,7 +123,7 @@ jobs:
 
           echo "### 🏷️ Release: \`${FULL_VER}\` (${CHANNEL})" >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0             # full history for changelog generation
 
@@ -170,7 +170,7 @@ jobs:
       # ── Upload changelog as artifact (for release job) ──────────────
       - name: Upload changelog artifact
         if: steps.dedup.outputs.skip != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-notes
           path: /tmp/release_notes_base.md
@@ -200,7 +200,7 @@ jobs:
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install build dependencies
         run: |
@@ -247,7 +247,7 @@ jobs:
           dpkg-deb -c dist/libthunderbird-sdk-dev_*.deb | head -20
 
       - name: Upload .deb artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: deb-${{ matrix.arch }}
           path: dist/*.deb
@@ -275,9 +275,9 @@ jobs:
             runner: ubuntu-24.04-arm
             cibw_arch: aarch64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip                   # caches ~/.cache/pip keyed on pyproject.toml
@@ -334,7 +334,7 @@ jobs:
           done
 
       - name: Upload wheel artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheel-${{ matrix.arch }}
           path: dist/*.whl
@@ -364,11 +364,11 @@ jobs:
       CCACHE_COMPRESS: "true"
       CCACHE_COMPRESSLEVEL: "6"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── apt cache ──────────────────────────────────────────────────
       - name: Cache apt packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/apt-cache
           key: apt-${{ matrix.runner }}-build-v1
@@ -386,7 +386,7 @@ jobs:
 
       # ── ccache ─────────────────────────────────────────────────────
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-release-${{ matrix.arch }}-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**', 'examples/**') }}
@@ -436,7 +436,7 @@ jobs:
       matrix:
         variant: [runtime, dev]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -537,7 +537,7 @@ jobs:
 
       # ── Trivy scan (fail on CRITICAL) ────────────────────────────────
       - name: Trivy container scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}@${{ steps.build.outputs.digest }}
           format: table
@@ -576,7 +576,7 @@ jobs:
       id-token: write            # cosign blob signing
       attestations: write        # SLSA provenance attestations
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0             # needed for changelog commit range
 
@@ -585,21 +585,21 @@ jobs:
       # failures from pulling everything in one shot (GH infra can
       # drop large parallel blob fetches).
       - name: Download deb artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: deb-*
           path: artifacts/
           merge-multiple: true
 
       - name: Download wheel artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: wheel-*
           path: artifacts/
           merge-multiple: true
 
       - name: Download release notes
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-notes
           path: artifacts/notes/
@@ -644,22 +644,22 @@ jobs:
       # Uses GitHub's native artifact attestation (SLSA Build L2+).
       # Creates Sigstore-backed provenance for each artifact.
       - name: Attest build provenance (debs)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: artifacts/*.deb
 
       - name: Attest build provenance (wheels)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: artifacts/*.whl
 
       - name: Attest build provenance (checksums)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: artifacts/SHA256SUMS.txt
 
       - name: Attest SBOM
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@v4
         with:
           subject-path: artifacts/*.deb
           sbom-path: artifacts/thunderbird-sdk.spdx.json

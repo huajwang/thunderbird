@@ -65,11 +65,11 @@ jobs:
       CCACHE_COMPRESS: "true"
       CCACHE_COMPRESSLEVEL: "6"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── apt cache (avoid re-downloading ~60 MB of .debs) ──────────
       - name: Cache apt packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/apt-cache
           key: apt-${{ matrix.runner }}-build-v1
@@ -87,7 +87,7 @@ jobs:
 
       # ── ccache (compiler output cache — biggest speedup) ───────────
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-${{ matrix.os }}-${{ matrix.build_type }}-${{ hashFiles('CMakeLists.txt', 'sdk/**', 'tests/**', 'examples/**') }}
@@ -139,7 +139,7 @@ jobs:
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install build deps
         run: |
@@ -181,9 +181,9 @@ jobs:
     name: "Wheel smoke"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip                   # caches ~/.cache/pip keyed on pyproject.toml
@@ -237,7 +237,7 @@ jobs:
       matrix:
         variant: [runtime, dev]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -311,7 +311,7 @@ jobs:
       matrix:
         variant: [runtime, dev]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
