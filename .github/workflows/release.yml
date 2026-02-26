@@ -492,7 +492,24 @@ jobs:
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.variant }}:${{ needs.preflight.outputs.full_version }}"
           echo "=== Manifest: ${IMAGE} ==="
-          docker buildx imagetools inspect "${IMAGE}"
+
+          # Retry up to 5 times — GHCR can be slow to expose a manifest
+          # right after a push, and transient network timeouts happen.
+          for attempt in 1 2 3 4 5; do
+            echo "Attempt ${attempt}/5 ..."
+            if docker buildx imagetools inspect "${IMAGE}" > /tmp/manifest.txt 2>&1; then
+              cat /tmp/manifest.txt
+              break
+            fi
+            echo "::warning::Manifest inspect failed (attempt ${attempt}), retrying in 15s..."
+            cat /tmp/manifest.txt
+            sleep 15
+          done
+
+          # Final check — fail if the last attempt also failed
+          docker buildx imagetools inspect "${IMAGE}" > /dev/null 2>&1 \
+            || { echo "::error::Failed to inspect manifest after 5 attempts"; exit 1; }
+
           ARCHS=$(docker buildx imagetools inspect "${IMAGE}" \
             --format '{{range .Manifest.Manifests}}{{.Platform.Architecture}} {{end}}')
           echo "Architectures: ${ARCHS}"
