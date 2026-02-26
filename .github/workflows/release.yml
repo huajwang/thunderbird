@@ -581,11 +581,28 @@ jobs:
           fetch-depth: 0             # needed for changelog commit range
 
       # ── Collect all build artifacts ──────────────────────────────────
-      - name: Download all artifacts
+      # Download each artifact set individually to avoid transient
+      # failures from pulling everything in one shot (GH infra can
+      # drop large parallel blob fetches).
+      - name: Download deb artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: deb-*
           path: artifacts/
           merge-multiple: true
+
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: artifacts/notes/
 
       - name: List collected artifacts
         run: |
