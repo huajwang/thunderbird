@@ -450,6 +450,18 @@ jobs:
             image=moby/buildkit:v0.14.1
             network=host
 
+      - name: Wait for GHCR availability
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -sf --max-time 10 https://ghcr.io/v2/ -o /dev/null 2>&1 || \
+               curl -sf --max-time 10 https://ghcr.io/v2/ 2>&1 | grep -q "UNAUTHORIZED"; then
+              echo "✓ GHCR is reachable (attempt ${i})"
+              break
+            fi
+            echo "::warning::GHCR not reachable (attempt ${i}/5), retrying in 15s..."
+            sleep 15
+          done
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
