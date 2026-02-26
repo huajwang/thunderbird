@@ -317,8 +317,7 @@ jobs:
             import spatial_sdk;
             v = spatial_sdk.__version__;
             print(f'spatial_sdk {v}');
-            assert v == '${{ needs.preflight.outputs.version }}',
-              f'Version mismatch: {v} != ${{ needs.preflight.outputs.version }}';
+            assert v == '${{ needs.preflight.outputs.version }}', f'Version mismatch: {v} != ${{ needs.preflight.outputs.version }}';
             print(f'Status.OK = {spatial_sdk.Status.OK}');
             print('OK');
             "
