@@ -786,9 +786,15 @@ int run_unit_tests() {
         p->record(15000);
         auto snap = prof.snapshot();
 
-        bool ok = (snap.probes.size() == 1 &&
-                   snap.probes[0].name == "test_snap" &&
-                   snap.probes[0].count == 2 &&
+        // Note: reset() clears data but does NOT unregister probes, so
+        // snap.probes includes probes from earlier tests.  Find ours.
+        const ProbeSnapshot* found = nullptr;
+        for (const auto& ps : snap.probes) {
+            if (ps.name == "test_snap") { found = &ps; break; }
+        }
+        bool ok = (found != nullptr &&
+                   found->count == 2 &&
+                   snap.probes.size() >= 1 &&
                    snap.uptime_s >= 0.0);
         std::printf("  [%s] Snapshot capture\n", ok ? "PASS" : "FAIL");
         if (!ok) ++failures;
