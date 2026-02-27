@@ -290,7 +290,8 @@ public:
         linalg::mat_mul(IKH, P_, IKH_P, N, N, N);
         linalg::mat_mul(IKH_P, IKHt, P_new, N, N, N);
 
-        double KR[N * M], Kt[N * N], KRKt[N * N];  // Kt padded to N×N to silence GCC
+        // KR is N×M, Kt is M×N (transpose of K), KRKt is N×N.
+        double KR[N * M], Kt[M * N], KRKt[N * N];
         linalg::mat_mul(K, R, KR, N, M, M);
         linalg::mat_transpose(K, Kt, N, M);
         linalg::mat_mul(KR, Kt, KRKt, N, M, N);
