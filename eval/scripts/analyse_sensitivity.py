@@ -13,7 +13,7 @@ from collections import defaultdict
 
 # ── Thresholds for grading ──────────────────────────────────────────────────
 ATE_GOOD, ATE_WARN = 2.0, 10.0      # metres
-_unused_DRIFT_GOOD, DRIFT_WARN = 2.0, 5.0   # m/100m
+DRIFT_GOOD, DRIFT_WARN_UNUSED = 2.0, 5.0   # m/100m
 UNUSED_RT_GOOD, RT_WARN = 15.0, 30.0       # ms avg frame
 
 # Presets grouped by platform
