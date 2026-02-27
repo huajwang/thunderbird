@@ -56,8 +56,9 @@ struct DetectionInput {
     /// Number of clusters (excluding label 0).
     uint32_t                 num_clusters{0};
 
-    /// Ground plane coefficients (ax + by + cz + d = 0),
-    /// filled by RANSAC mode; zeroed in height-threshold mode.
+    /// Ground plane coefficients (ax + by + cz + d = 0).
+    /// In RANSAC mode: estimated ground plane from the input cloud.
+    /// In HeightThreshold mode: canonical z-up plane (a=0, b=0, c=1, d=-threshold).
     double                   ground_plane[4]{};
 
     /// Number of raw points before preprocessing.

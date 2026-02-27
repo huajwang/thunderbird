@@ -225,9 +225,11 @@ static void test_confidence_threshold_filtering() {
     std::vector<PointXYZIT> pts;
     std::vector<uint32_t> labels;
 
-    // Person (base confidence 0.55 → below 0.60 threshold → filtered)
-    // Put height outside sweet spot so we get base confidence only
-    addCluster(pts, labels, 1, 5.0, 0.0, 1.05, 0.5, 0.5, 2.1, 3);
+    // Oddly-shaped blob that classifies as Unknown (conf 0.30 < 0.60).
+    // Effective dimensions: 0.75 × 0.75 × 2.25 (n=4).
+    //   Not Person (eff height 2.25 ≥ 2.2), not Pole (eff width 0.75 ≥ 0.5),
+    //   not Vehicle (eff length 0.75 < 1.5), not Cyclist (eff height ≥ 2.2).
+    addCluster(pts, labels, 1, 5.0, 0.0, 1.5, 1.0, 1.0, 3.0);
 
     // Vehicle with good confidence (0.70 → above threshold → kept)
     addCluster(pts, labels, 2, 15.0, 5.0, 0.75, 4.0, 1.8, 1.5, 4);

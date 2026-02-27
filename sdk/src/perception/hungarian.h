@@ -32,7 +32,9 @@ struct Assignment {
 ///
 /// @param  cost_matrix  Row-major cost matrix [n_rows × n_cols].
 ///                      Rows = detections, columns = tracks.
-///                      **Must** have at least max(n_rows, n_cols) ≥ 1.
+///                      May be empty (n_rows == 0 or n_cols == 0), in which
+///                      case the outputs are left empty and the function
+///                      returns immediately.
 /// @param  n_rows       Number of detections.
 /// @param  n_cols       Number of tracks.
 /// @param  gate         Maximum allowable cost.  Pairs whose original cost

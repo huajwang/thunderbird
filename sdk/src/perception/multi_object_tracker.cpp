@@ -54,10 +54,13 @@ struct InternalTrack {
     double yaw_rate{0.0};
 };
 
+/// Portable π constant (avoids non-standard M_PI).
+static constexpr double kPi = 3.14159265358979323846;
+
 /// Normalise angle to [-π, π].
 inline double normalise_angle(double a) {
-    while (a >  M_PI) a -= 2.0 * M_PI;
-    while (a < -M_PI) a += 2.0 * M_PI;
+    while (a >  kPi) a -= 2.0 * kPi;
+    while (a < -kPi) a += 2.0 * kPi;
     return a;
 }
 

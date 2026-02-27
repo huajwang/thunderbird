@@ -266,7 +266,10 @@ struct PointCloudPreprocessor::Impl {
                 frontier.pop();
                 ++cluster_size;
 
-                if (cluster_size > config.cluster_max_points) break;
+                // Once oversized, keep draining the frontier (so every
+                // connected point stays labeled) but stop expanding to
+                // new neighbors.  The cluster will be rejected below.
+                if (cluster_size > config.cluster_max_points) continue;
 
                 const auto& p = non_ground[idx];
                 auto center_key = point_to_voxel(
@@ -300,8 +303,9 @@ struct PointCloudPreprocessor::Impl {
                 }
             }
 
-            // Remove too-small clusters; relabel to 0 (unassigned).
-            if (cluster_size < config.cluster_min_points) {
+            // Remove too-small or too-large clusters; relabel to 0 (unassigned).
+            if (cluster_size < config.cluster_min_points ||
+                cluster_size > config.cluster_max_points) {
                 for (uint32_t i = 0; i < n; ++i) {
                     if (labels[i] == cluster_id) labels[i] = 0;
                 }

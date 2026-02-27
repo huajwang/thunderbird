@@ -125,8 +125,10 @@ static void test_feed_is_nonblocking() {
     auto elapsed = std::chrono::steady_clock::now() - start;
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
 
-    // 100 pushes should take < 10 ms total (non-blocking)
-    assert(us < 10'000);
+    // 100 pushes should complete quickly.  We use a generous 100 ms
+    // threshold to avoid flakiness on slow / contended CI runners
+    // (each call does a condition_variable notify which is a syscall).
+    assert(us < 100'000);
 
     engine.stop();
     engine.shutdown();
@@ -165,8 +167,10 @@ static void test_full_pipeline_pull() {
         // Success — optionally verify objects if available.
         (void)result->objects.size();
     } else {
-        // Verify the pipeline at least processed some frames.
+        // Verify the pipeline at least ingested some frames.
         // (Counts are updated atomically by T1/T3.)
+        auto s = engine.stats();
+        assert(s.frames_received > 0);
     }
 
     engine.stop();

@@ -139,8 +139,8 @@ static void test_roi_radius_crop() {
     assert(result.raw_point_count == 2);
     // Only the near point should survive ROI crop
     assert(result.filtered_cloud != nullptr);
-    // At most 1 point should survive (the near one)
-    assert(result.filtered_cloud->points.size() <= 2);  // downsampling may keep 1
+    // Exactly 1 point should survive (the near one)
+    assert(result.filtered_cloud->points.size() == 1);
     std::puts("  [PASS] roi_radius_crop");
 }
 

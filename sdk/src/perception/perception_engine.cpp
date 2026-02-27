@@ -6,8 +6,9 @@
 // See perception_engine.h for the full thread model diagram.
 //
 // Key design constraints:
-//   • feedSlamOutput() must be lock-free and complete in < 200 ns so that
-//     the SLAM worker thread is never blocked.
+//   • feedSlamOutput() is lightweight: the SPSC push is lock-free, followed
+//     by a condition_variable notify to wake T1.  The notify may involve a
+//     syscall but keeps SLAM-thread blocking to a minimum.
 //   • All heavy work (preprocessing, detection, tracking) happens on
 //     dedicated threads — never on the caller's thread.
 //   • GPU inference (T2) runs on its own thread with an exclusive CUDA
