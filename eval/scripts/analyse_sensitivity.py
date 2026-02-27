@@ -14,7 +14,7 @@ from collections import defaultdict
 # ── Thresholds for grading ──────────────────────────────────────────────────
 ATE_GOOD, ATE_WARN = 2.0, 10.0      # metres
 DRIFT_GOOD, DRIFT_WARN_UNUSED = 2.0, 5.0   # m/100m
-UNUSED_RT_GOOD, RT_WARN = 15.0, 30.0       # ms avg frame
+RT_GOOD, _RT_WARN_UNUSED = 15.0, 30.0       # ms avg frame
 
 # Presets grouped by platform
 DRONE_PRESETS = ["aggressive_drone", "spinning_top"]
