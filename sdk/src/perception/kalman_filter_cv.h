@@ -208,11 +208,11 @@ public:
 
     /// Update with measurement z = [px, py, pz, yaw].
     void update(const double z[4], double r_pos, double r_yaw) {
-        // Measurement matrix H (M × N):
-        //   H = [1 0 0 0 0 0 0;
-        //        0 1 0 0 0 0 0;
-        //        0 0 1 0 0 0 0;
-        //        0 0 0 1 0 0 0]
+        // Measurement matrix H (M × N), selecting position and yaw from state:
+        //   | 1 0 0 0 0 0 0 |
+        //   | 0 1 0 0 0 0 0 |
+        //   | 0 0 1 0 0 0 0 |
+        //   | 0 0 0 1 0 0 0 |
         double H[M * N];
         std::memset(H, 0, sizeof(H));
         H[0 * N + 0] = 1.0;
