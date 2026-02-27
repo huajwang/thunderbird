@@ -163,6 +163,10 @@ struct PointCloudPreprocessor::Impl {
         // Simplified RANSAC: fit a horizontal-ish plane.
         if (downsampled.size() < 3) {
             non_ground = downsampled;
+            plane[0] = 0.0;
+            plane[1] = 0.0;
+            plane[2] = 1.0;
+            plane[3] = 0.0;
             return;
         }
 
