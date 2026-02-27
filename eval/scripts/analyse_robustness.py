@@ -414,7 +414,7 @@ def main():
     baselines = extract_baselines(rows)
     print(f"Baselines for {len(baselines)} presets: {', '.join(sorted(baselines))}")
 
-    report = generate_report(rows, baselines, output_dir)
+    generate_report(rows, baselines, output_dir)
 
 
 if __name__ == "__main__":
