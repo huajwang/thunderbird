@@ -21,6 +21,7 @@
 #include "thunderbird/ring_buffer.h"
 
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -105,6 +106,7 @@ struct PerceptionEngine::Impl {
     std::thread t2_detector;
     std::thread t3_tracker;
 
+    std::atomic<bool> initialized{false};
     std::atomic<bool> running{false};
     std::atomic<bool> shutdown_requested{false};
 
@@ -302,11 +304,15 @@ bool PerceptionEngine::initialize(const PerceptionConfig& config) {
             1.0e9 / config.pipeline.max_inference_rate_hz);
     }
 
+    impl_->initialized.store(true, std::memory_order_release);
     return true;
 }
 
 void PerceptionEngine::start() {
     if (impl_->running.load(std::memory_order_relaxed)) return;
+
+    assert(impl_->initialized.load(std::memory_order_acquire) &&
+           "PerceptionEngine::start() called before successful initialize()");
 
     impl_->shutdown_requested.store(false, std::memory_order_release);
     impl_->running.store(true, std::memory_order_release);

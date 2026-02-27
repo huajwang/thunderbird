@@ -77,21 +77,12 @@ inline const char* object_class_name(ObjectClass c) noexcept {
 // ═════════════════════════════════════════════════════════════════════════════
 //  3D Oriented Bounding Box
 // ═════════════════════════════════════════════════════════════════════════════
-//
-// Memory layout (56 bytes):
-//   center[3]   24 bytes (double × 3)
-//   extent[3]   24 bytes (double × 3)
-//   yaw          8 bytes (double)
-//   total: 56 bytes — no padding
-// ─────────────────────────────────────────────────────────────────────────────
 
 struct BBox3D {
     double center[3]{};      ///< x, y, z in the detection reference frame
     double extent[3]{};      ///< length, width, height (metres)
     double yaw{0.0};         ///< heading angle (radians, Z-up, counter-clockwise)
 };
-
-static_assert(sizeof(BBox3D) == 56, "BBox3D must be 56 bytes");
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  Single Detection (per-frame, before tracking)

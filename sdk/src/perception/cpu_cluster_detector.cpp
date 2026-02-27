@@ -120,6 +120,22 @@ private:
     // Scratch buffer.
     std::vector<size_t> cluster_pts_;
 
+    // ── Classifier confidence thresholds ────────────────────────────────
+    //
+    // Base values are conservative (geometry alone is noisy); boosted
+    // values apply when the cluster dimensions fall in the "sweet spot"
+    // for the class.
+
+    static constexpr float kPersonConfBase     = 0.55f; // rough dimensional match
+    static constexpr float kPersonConfGood      = 0.75f; // height 1.0–2.0 m sweet spot
+    static constexpr float kPoleConfBase        = 0.60f; // tall & thin match
+    static constexpr float kPoleConfGood        = 0.80f; // height > 2.5 m, very likely
+    static constexpr float kVehicleConfBase     = 0.50f; // coarse size match
+    static constexpr float kVehicleConfGood     = 0.70f; // tighter L/W window
+    static constexpr float kCyclistConfBase     = 0.45f; // person-like + elongated
+    static constexpr float kUnknownConfBase     = 0.30f; // enough points, but unclassified
+    static constexpr float kNoiseConf           = 0.00f; // too few points to be useful
+
     // ── Cluster statistics ──────────────────────────────────────────────
 
     struct ClusterStats {
@@ -222,8 +238,8 @@ private:
             s.num_points >= 8)
         {
             label = ObjectClass::Person;
-            confidence = 0.55f;
-            if (s.height > 1.0 && s.height < 2.0) confidence = 0.75f;
+            confidence = kPersonConfBase;
+            if (s.height > 1.0 && s.height < 2.0) confidence = kPersonConfGood;
             return;
         }
 
@@ -232,8 +248,8 @@ private:
             s.elongation < 2.0)
         {
             label = ObjectClass::Pole;
-            confidence = 0.60f;
-            if (s.height > 2.5) confidence = 0.80f;
+            confidence = kPoleConfBase;
+            if (s.height > 2.5) confidence = kPoleConfGood;
             return;
         }
 
@@ -244,9 +260,9 @@ private:
             s.num_points >= 20)
         {
             label = ObjectClass::Vehicle;
-            confidence = 0.50f;
+            confidence = kVehicleConfBase;
             if (s.length > 2.5 && s.length < 5.5 &&
-                s.width > 1.2 && s.width < 2.5) confidence = 0.70f;
+                s.width > 1.2 && s.width < 2.5) confidence = kVehicleConfGood;
             return;
         }
 
@@ -257,20 +273,20 @@ private:
             s.elongation > 1.5)
         {
             label = ObjectClass::Cyclist;
-            confidence = 0.45f;
+            confidence = kCyclistConfBase;
             return;
         }
 
         // Unknown object: enough points to be something, but doesn't match
         if (s.num_points >= 5) {
             label = ObjectClass::Unknown;
-            confidence = 0.30f;
+            confidence = kUnknownConfBase;
             return;
         }
 
         // Noise: too few points.
         label = ObjectClass::Unknown;
-        confidence = 0.0f;
+        confidence = kNoiseConf;
     }
 };
 

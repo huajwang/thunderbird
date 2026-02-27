@@ -20,6 +20,7 @@
 #include "kalman_filter_cv.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -165,10 +166,10 @@ struct MultiObjectTracker::Impl {
                         break;
                     }
                     case AssociationMetric::Mahalanobis: {
-                        const double meas[4] = {
+                        const std::array<double, 4> meas = {{
                             det.bbox.center[0], det.bbox.center[1],
                             det.bbox.center[2], det.bbox.yaw
-                        };
+                        }};
                         const double md = trk.kf.mahalanobis(
                             meas,
                             config.measurement_noise,
@@ -236,10 +237,10 @@ struct MultiObjectTracker::Impl {
             const auto& det = dets[a.row];
 
             // KF measurement update.
-            const double meas[4] = {
+            const std::array<double, 4> meas = {{
                 det.bbox.center[0], det.bbox.center[1],
                 det.bbox.center[2], det.bbox.yaw
-            };
+            }};
             trk.kf.update(meas,
                           config.measurement_noise,
                           config.process_noise_yaw);

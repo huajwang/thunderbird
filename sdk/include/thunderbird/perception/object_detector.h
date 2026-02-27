@@ -9,6 +9,11 @@
 //   • GpuPillarDetector    — PointPillars via TensorRT  (requires GPU build)
 //   • GpuCenterPointDetector — CenterPoint via TensorRT (requires GPU build)
 //
+// NOTE: GPU backends are compile-time stubs in this release.  They compile
+//       and link when THUNDERBIRD_HAS_GPU_PERCEPTION is defined but the
+//       detect() implementations are not yet wired to TensorRT and will
+//       return an empty DetectionFrame with a one-time warning.
+//
 // The factory method ObjectDetector::create() selects the correct backend
 // at runtime based on PerceptionConfig::detector::backend and build flags.
 //

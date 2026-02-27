@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdint>
 #include <numeric>
+#include <random>
 #include <queue>
 #include <unordered_map>
 #include <vector>
@@ -172,18 +173,15 @@ struct PointCloudPreprocessor::Impl {
         double best_plane[4]{0, 0, 1, 0};
         size_t best_inliers = 0;
 
-        // Simple LCG for deterministic pseudo-random sampling.
-        uint32_t rng_state = 42;
-        auto rng_next = [&]() -> uint32_t {
-            rng_state = rng_state * 1664525u + 1013904223u;
-            return rng_state;
-        };
+        // Deterministic seed for reproducible RANSAC results across runs.
+        std::mt19937 rng(42);
+        std::uniform_int_distribution<size_t> dist(0, n - 1);
 
         for (int iter = 0; iter < max_iter; ++iter) {
             // Pick 3 random points.
-            const auto& p0 = downsampled[rng_next() % n];
-            const auto& p1 = downsampled[rng_next() % n];
-            const auto& p2 = downsampled[rng_next() % n];
+            const auto& p0 = downsampled[dist(rng)];
+            const auto& p1 = downsampled[dist(rng)];
+            const auto& p2 = downsampled[dist(rng)];
 
             // Cross product: normal = (p1-p0) × (p2-p0)
             const double ux = p1.x - p0.x, uy = p1.y - p0.y, uz = p1.z - p0.z;

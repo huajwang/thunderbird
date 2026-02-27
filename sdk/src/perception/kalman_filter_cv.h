@@ -207,8 +207,8 @@ public:
         linalg::mat_add(FPFt, Q, P_, N);
     }
 
-    void update(const double* z, double r_pos, double r_yaw) {
-    void update(const double z[4], double r_pos, double r_yaw) {
+    void update(const std::array<double, KF_MEAS_DIM>& z,
+                double r_pos, double r_yaw) {
         // Measurement matrix H (M × N), selecting position and yaw from state:
         //   | 1 0 0 0 0 0 0 |
         //   | 0 1 0 0 0 0 0 |
@@ -300,7 +300,7 @@ public:
     }
 
     /// Compute Mahalanobis distance between current state and measurement z.
-    [[nodiscard]] double mahalanobis(const std::array<double, M>& z,
+    [[nodiscard]] double mahalanobis(const std::array<double, KF_MEAS_DIM>& z,
                                      double r_pos, double r_yaw) const {
         // Innovation: y = z − H·x  (H extracts first 4 state elements).
         double y[M];
