@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #include "thunderbird/odom/slam_engine.h"
 #include "thunderbird/odom/slam_time_sync.h"
+#include "thunderbird/odom/runtime_profiler.h"
 #include "thunderbird/ring_buffer.h"
 
 #include <atomic>
@@ -239,6 +240,9 @@ struct AcmeSlamEngine::Impl {
     PoseCallback             on_pose_cb;
     std::function<void(TrackingStatus)> on_status_cb;
 
+    // ── Runtime profiler (worker thread only, snapshot() is thread-safe) ─
+    RuntimeProfiler profiler;
+
     // ── Constructor ─────────────────────────────────────────────────────
     Impl() = default;
 
@@ -266,8 +270,10 @@ struct AcmeSlamEngine::Impl {
 
             // ── Sleep if idle ───────────────────────────────────────
             if (!did_work) {
+                profiler.markIdleStart();
                 std::unique_lock<std::mutex> lk(wake_mu);
                 wake_cv.wait_for(lk, std::chrono::microseconds(500));
+                profiler.markIdleEnd();
             }
         }
     }
@@ -302,7 +308,11 @@ struct AcmeSlamEngine::Impl {
                 if (dt_s > 0 && dt_s < 1.0) {
                     using clock = std::chrono::steady_clock;
                     const auto t0 = clock::now();
-                    esikf.propagate(sample, dt_s);
+                    {
+                        RuntimeProfiler::Scope pscope(profiler,
+                            ProfileModule::ImuPropagate);
+                        esikf.propagate(sample, dt_s);
+                    }
                     const auto t1 = clock::now();
                     const double us =
                         std::chrono::duration<double, std::micro>(t1 - t0)
@@ -361,28 +371,45 @@ struct AcmeSlamEngine::Impl {
         using clock = std::chrono::steady_clock;
         const auto t0 = clock::now();
 
+        // Start scan-total profiling scope.
+        RuntimeProfiler::Scope scan_scope(profiler, ProfileModule::ScanTotal);
+
         // ── 3a: Deskew ──────────────────────────────────────────────
         std::shared_ptr<PointCloudFrame> deskewed;
-        if (config.deskew.enable && meas.scan) {
-            deskewed = internal::PointDeskewer::deskew(
-                *meas.scan, meas.imu_block, esikf.state);
-        } else if (meas.scan) {
-            // No deskewing — use raw cloud.
-            deskewed = std::make_shared<PointCloudFrame>(*meas.scan);
+        {
+            RuntimeProfiler::Scope deskew_scope(profiler, ProfileModule::Deskew);
+            if (config.deskew.enable && meas.scan) {
+                deskewed = internal::PointDeskewer::deskew(
+                    *meas.scan, meas.imu_block, esikf.state);
+            } else if (meas.scan) {
+                // No deskewing — use raw cloud.
+                deskewed = std::make_shared<PointCloudFrame>(*meas.scan);
+            }
         }
 
         if (!deskewed || deskewed->points.empty()) return true;
 
         // ── 3b: ESIKF iterated update ───────────────────────────────
-        bool update_ok = esikf.update(*deskewed, ikd_tree, config.esikf);
+        bool update_ok;
+        {
+            RuntimeProfiler::Scope update_scope(profiler,
+                ProfileModule::EsikfUpdate);
+            update_ok = esikf.update(*deskewed, ikd_tree, config.esikf);
+        }
 
         // ── 3c: Insert into ikd-Tree ────────────────────────────────
         if (update_ok) {
-            ikd_tree.insert(*deskewed);
+            {
+                RuntimeProfiler::Scope insert_scope(profiler,
+                    ProfileModule::IkdInsert);
+                ikd_tree.insert(*deskewed);
+            }
 
             if (scan_counter > 0 &&
                 (scan_counter % static_cast<uint32_t>(
                     config.map.tree_rebalance_interval)) == 0) {
+                RuntimeProfiler::Scope rebal_scope(profiler,
+                    ProfileModule::IkdRebalance);
                 ikd_tree.rebalance();
             }
         }
@@ -390,6 +417,9 @@ struct AcmeSlamEngine::Impl {
         const auto t1 = clock::now();
         const double update_ms =
             std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+        // ── Sample RSS once per scan (low overhead) ─────────────────
+        profiler.sampleMemory();
 
         // ── 3d: Update tracking status ──────────────────────────────
         updateTrackingStatus(update_ok);
@@ -509,6 +539,9 @@ struct AcmeSlamEngine::Impl {
         stats.scans_processed.store(0, std::memory_order_relaxed);
         stats.avg_propagation_us.store(0, std::memory_order_relaxed);
         stats.avg_update_ms.store(0, std::memory_order_relaxed);
+
+        // Reset profiler.
+        profiler.reset();
 
         transitionStatus(TrackingStatus::Initializing);
     }
@@ -689,6 +722,10 @@ size_t AcmeSlamEngine::imuDropCount() const noexcept {
 
 size_t AcmeSlamEngine::cloudDropCount() const noexcept {
     return impl_->cloud_ring.dropped();
+}
+
+ProfileSnapshot AcmeSlamEngine::profileSnapshot() const noexcept {
+    return impl_->profiler.snapshot();
 }
 
 } // namespace thunderbird::odom

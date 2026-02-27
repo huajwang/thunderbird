@@ -1,0 +1,70 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Drone Platform Config
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Tuned for: Quadrotor with Livox Mid-360 + BMI088 IMU
+#
+# Characteristics:
+#   - High angular rates (up to ~344 deg/s in aggressive manoeuvres)
+#   - Moderate linear speed (< 15 m/s)
+#   - High-frequency vibration environment
+#   - Compact LiDAR FoV, moderate range
+#   - Short-range mapping (indoor/urban canyon)
+#
+# Tuning status: Updated from sensitivity sweep (v0.2.0)
+# Sensitivity analysis showed 0% ATE change across all parameter sweeps on
+# synthetic data — accuracy is algorithm-bound, not parameter-bound.
+# Changes below are conservative RT optimisations only.
+# ─────────────────────────────────────────────────────────────────────────────
+
+sensor:
+  imu_rate_hz:   400.0
+  lidar_rate_hz: 10.0
+
+slam:
+  # ── IMU noise model ───────────────────────────────────────────────────
+  # Typical MEMS (BMI088 class)
+  imu_noise:
+    gyro_noise:    1.6e-3    # rad/s/√Hz  — datasheet: 0.014 dps/√Hz
+    accel_noise:   2.0e-2    # m/s²/√Hz   — datasheet: 175 µg/√Hz
+    gyro_bias_rw:  2.0e-5    # rad/s²/√Hz
+    accel_bias_rw: 3.0e-4    # m/s³/√Hz
+
+  # ── LiDAR ↔ IMU extrinsic (Livox Mid-360 on drone frame) ─────────────
+  extrinsic:
+    rotation:    [1.0, 0.0, 0.0, 0.0]
+    translation: [0.04, 0.0, -0.03]       # 4 cm forward, 3 cm below IMU
+    refine_online: false
+
+  # ── ESIKF convergence ─────────────────────────────────────────────────
+  esikf:
+    max_iterations:      3       # sensitivity: 2-5 give same ATE, 3 balances RT/robustness
+    convergence_eps:     1.0e-3
+    plane_noise_sigma:   0.01
+    min_correspondences: 20
+    max_residual:        0.5
+
+  # ── Point deskewing ───────────────────────────────────────────────────
+  deskew:
+    enable: true
+    imu_integration_substeps: 2    # finer sub-steps for high angular rate
+
+  # ── Gravity alignment ────────────────────────────────────────────────
+  init:
+    gravity_duration_s:     1.0
+    min_imu_samples:        200
+    gravity_tolerance:      0.5
+
+  # ── Map (ikd-Tree) ───────────────────────────────────────────────────
+  map:
+    voxel_resolution:        0.3
+    map_radius:              60.0       # shorter range for indoor/urban
+    max_map_points:          300000
+    delete_ratio:            0.1
+    tree_rebalance_interval: 10
+
+  # ── Time sync ─────────────────────────────────────────────────────────
+  enable_drift_compensation: true
+  sort_window_ns: 5000000
+
+  publish_propagated_poses: false    # eval only needs corrected poses

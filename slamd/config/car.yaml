@@ -1,0 +1,70 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Autonomous Car Platform Config
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Tuned for: Autonomous vehicle with Velodyne VLP-64 + ADIS16470 IMU
+#
+# Characteristics:
+#   - Low angular rate (< 90 deg/s nominal, highway lanes)
+#   - High linear speed (up to 120 km/h = 33.3 m/s)
+#   - Low-vibration environment (rigid chassis mount)
+#   - Wide LiDAR FoV, 64-beam, long range
+#   - Large-scale outdoor mapping (100 m+ radius)
+#
+# Tuning status: Updated from sensitivity sweep (v0.2.0)
+# Sensitivity analysis showed 0% ATE change across all parameter sweeps on
+# synthetic data — accuracy is algorithm-bound, not parameter-bound.
+# Changes below are conservative RT optimisations only.
+# ─────────────────────────────────────────────────────────────────────────────
+
+sensor:
+  imu_rate_hz:   200.0
+  lidar_rate_hz: 10.0
+
+slam:
+  # ── IMU noise model ───────────────────────────────────────────────────
+  # Automotive-grade IMU (ADIS16470 class)
+  imu_noise:
+    gyro_noise:    8.0e-4    # rad/s/√Hz  — lower noise floor
+    accel_noise:   1.0e-2    # m/s²/√Hz
+    gyro_bias_rw:  1.0e-5    # rad/s²/√Hz
+    accel_bias_rw: 1.0e-4    # m/s³/√Hz
+
+  # ── LiDAR ↔ IMU extrinsic (VLP-64 on roof rack) ──────────────────────
+  extrinsic:
+    rotation:    [1.0, 0.0, 0.0, 0.0]
+    translation: [0.0, 0.0, 0.28]        # 28 cm above IMU (roof mount)
+    refine_online: false
+
+  # ── ESIKF convergence ─────────────────────────────────────────────────
+  esikf:
+    max_iterations:      5
+    convergence_eps:     1.0e-3
+    plane_noise_sigma:   0.01
+    min_correspondences: 20
+    max_residual:        0.5
+
+  # ── Point deskewing ───────────────────────────────────────────────────
+  deskew:
+    enable: true
+    imu_integration_substeps: 1    # linear OK for smooth car motion (sweep: 1-8 give same ATE)
+
+  # ── Gravity alignment ────────────────────────────────────────────────
+  init:
+    gravity_duration_s:     1.0
+    min_imu_samples:        200
+    gravity_tolerance:      0.5
+
+  # ── Map (ikd-Tree) ───────────────────────────────────────────────────
+  map:
+    voxel_resolution:        0.4        # coarser for long-range outdoor
+    map_radius:              150.0      # large radius for highway
+    max_map_points:          800000     # more points for denser scans
+    delete_ratio:            0.1
+    tree_rebalance_interval: 10
+
+  # ── Time sync ─────────────────────────────────────────────────────────
+  enable_drift_compensation: true
+  sort_window_ns: 5000000
+
+  publish_propagated_poses: false    # eval only needs corrected poses
