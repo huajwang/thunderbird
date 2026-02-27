@@ -260,28 +260,36 @@ static void test_track_ids_monotonic() {
     cfg.association_gate = 10.0;
     MultiObjectTracker tracker(cfg);
 
-    std::set<uint64_t> seen_ids;
+    std::set<uint64_t> all_ids;
+    uint64_t max_new_id = 0;
 
-    // Feed detections, creating new tracks
+    // Feed detections, creating new tracks.  Tracks from earlier frames
+    // may reappear (coasting), so we only check that *new* IDs are
+    // monotonically increasing and that IDs are unique within a frame.
     for (int i = 0; i < 5; ++i) {
         int64_t ts = 1'000'000'000LL + i * 100'000'000LL;
         // Move detection far each time to force new track creation
         auto result = tracker.update(
             makeFrame(ts, 10.0 + i * 50.0, 0.0, 0.75));
 
+        std::set<uint64_t> frame_ids;
         for (auto& obj : result.objects) {
-            // Every ID should be new (never reused)
-            assert(seen_ids.find(obj.track_id) == seen_ids.end());
-            seen_ids.insert(obj.track_id);
+            // No duplicate IDs within a single frame
+            assert(frame_ids.find(obj.track_id) == frame_ids.end());
+            frame_ids.insert(obj.track_id);
+
+            // First time we see this ID, it must be larger than all
+            // previously seen IDs (monotonic assignment).
+            if (all_ids.find(obj.track_id) == all_ids.end()) {
+                assert(obj.track_id > max_new_id);
+                max_new_id = obj.track_id;
+            }
+            all_ids.insert(obj.track_id);
         }
     }
 
-    // Verify monotonic — IDs in the set should be ascending
-    uint64_t prev = 0;
-    for (auto id : seen_ids) {
-        assert(id > prev);
-        prev = id;
-    }
+    // We should have created at least 5 distinct tracks
+    assert(all_ids.size() >= 5);
 
     std::puts("  [PASS] track_ids_monotonic");
 }

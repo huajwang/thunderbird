@@ -57,21 +57,25 @@ static void test_kf_predict_moves_position() {
     KalmanFilterCV kf;
     kf.init(0, 0, 0, 0, 1.0, 1.0, 0.1);
 
-    // Set velocity by doing an update at an offset position
-    std::array<double, KF_MEAS_DIM> z = {{5.0, 0.0, 0.0, 0.0}};
-    kf.update(z, 0.5, 0.1);
+    // A single update from a diagonal-P state doesn't build velocity
+    // (no pos-vel cross-covariance yet).  We need a predict-update cycle
+    // so that the predict step creates cross-terms, and the second update
+    // infers velocity from the position shift.
+    std::array<double, KF_MEAS_DIM> z1 = {{0.0, 0.0, 0.0, 0.0}};
+    kf.update(z1, 0.5, 0.1);
+    kf.predict(0.1, 0.5, 1.0, 0.1);  // builds pos-vel cross-covariance
 
-    // After update, position should have moved towards z
+    std::array<double, KF_MEAS_DIM> z2 = {{5.0, 0.0, 0.0, 0.0}};
+    kf.update(z2, 0.5, 0.1);         // large innovation → positive vx
+
+    assert(kf.vx() > 0.0);           // velocity should now be positive
+
+    const double px_before = kf.px();
+    kf.predict(1.0, 0.5, 1.0, 0.1);
     const double px_after = kf.px();
-    assert(px_after > 0.0);  // moved towards 5.0
 
-    // Now predict forward
-    const double dt = 1.0;
-    kf.predict(dt, 0.5, 1.0, 0.1);
-
-    // Position should have advanced by ~vx * dt
-    const double px_predict = kf.px();
-    assert(px_predict > px_after);  // moved further
+    // With positive velocity, predict should advance position
+    assert(px_after > px_before);
 
     std::puts("  [PASS] kf_predict_moves_position");
 }

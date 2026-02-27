@@ -156,8 +156,10 @@ static void test_pole_cluster() {
 
     std::vector<PointXYZIT> pts;
     std::vector<uint32_t> labels;
-    // Pole: very tall (3 m) and thin (0.3 × 0.3)
-    addCluster(pts, labels, 1, 3.0, -2.0, 1.5, 0.3, 0.3, 3.0, 3);
+    // Pole: very tall (5 m) and thin (0.3 × 0.3)
+    // Use enough points_per_axis so the z-extent exceeds the Person
+    // height ceiling (2.2 m) — otherwise the Person rule fires first.
+    addCluster(pts, labels, 1, 3.0, -2.0, 2.5, 0.3, 0.3, 5.0);
 
     auto input = makeInput(pts, labels, 1);
     auto result = det->detect(input);
