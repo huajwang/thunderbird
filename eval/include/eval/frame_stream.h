@@ -3,8 +3,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // Drives AcmeSlamEngine from a DatasetAdapter in strict timestamp order.
-// No wall-clock sleeping — pure data-driven replay for determinism.
-// Instruments every phase with PerfTimer hooks.
+// After feeding each LiDAR frame, polls getLatestOutput() until the
+// engine produces a result (or a timeout expires), recording the true
+// wait duration.  Instruments every phase with PerfTimer hooks.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once

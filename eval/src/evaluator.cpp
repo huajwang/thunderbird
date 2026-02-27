@@ -27,22 +27,47 @@ static double vec_dist(const std::array<double,3>& a,
     return std::sqrt(dx*dx + dy*dy + dz*dz);
 }
 
-/// Compute path length from a sequence of positions.
-static double path_length(const std::vector<std::array<double,3>>& positions) {
-    double len = 0.0;
-    for (size_t i = 1; i < positions.size(); ++i) {
-        len += vec_dist(positions[i-1], positions[i]);
-    }
-    return len;
+/// Quaternion conjugate (= inverse for unit quaternions).  [w,x,y,z].
+static std::array<double,4> quat_conj(const std::array<double,4>& q) {
+    return {q[0], -q[1], -q[2], -q[3]};
 }
 
-/// Quaternion angular distance in degrees.
-/// Both quaternions are [w, x, y, z].
-static double quat_angle_deg(const std::array<double,4>& q1,
-                              const std::array<double,4>& q2) {
-    double dot = q1[0]*q2[0] + q1[1]*q2[1] + q1[2]*q2[2] + q1[3]*q2[3];
-    dot = std::clamp(std::abs(dot), 0.0, 1.0);
-    return 2.0 * std::acos(dot) * (180.0 / 3.14159265358979323846);
+/// Hamilton quaternion product:  r = a * b.  Convention [w,x,y,z].
+static std::array<double,4> quat_mul(const std::array<double,4>& a,
+                                      const std::array<double,4>& b) {
+    return {
+        a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3],
+        a[0]*b[1] + a[1]*b[0] + a[2]*b[3] - a[3]*b[2],
+        a[0]*b[2] - a[1]*b[3] + a[2]*b[0] + a[3]*b[1],
+        a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + a[3]*b[0]
+    };
+}
+
+/// Rotate a 3D vector by a unit quaternion:  v' = q * v * q⁻¹.
+static std::array<double,3> quat_rotate(const std::array<double,4>& q,
+                                         const std::array<double,3>& v) {
+    // Optimised form (avoids double quaternion multiply).
+    //   t = 2 * (q_xyz × v)
+    //   v' = v + q_w * t + (q_xyz × t)
+    double tx = 2.0 * (q[2]*v[2] - q[3]*v[1]);
+    double ty = 2.0 * (q[3]*v[0] - q[1]*v[2]);
+    double tz = 2.0 * (q[1]*v[1] - q[2]*v[0]);
+    return {
+        v[0] + q[0]*tx + (q[2]*tz - q[3]*ty),
+        v[1] + q[0]*ty + (q[3]*tx - q[1]*tz),
+        v[2] + q[0]*tz + (q[1]*ty - q[2]*tx)
+    };
+}
+
+/// Rotation angle of a unit quaternion in degrees.
+static double quat_angle_deg(const std::array<double,4>& q) {
+    double w = std::clamp(std::abs(q[0]), 0.0, 1.0);
+    return 2.0 * std::acos(w) * (180.0 / 3.14159265358979323846);
+}
+
+/// Vector norm.
+static double vec_norm(const std::array<double,3>& v) {
+    return std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
 }
 
 /// Find nearest GT pose by timestamp (binary search).
@@ -144,9 +169,12 @@ MetricSet Evaluator::compute(
                       << "/" << alignment.total_pairs;
         std::cerr << "\n";
 
-        // Apply alignment to estimated positions.
+        // Apply alignment to estimated positions and orientations.
+        // Both must be transformed into the GT frame so RPE does not
+        // mix frames when computing relative transforms.
         for (auto& a : aligned) {
-            a.est_pos = applyAlignment(a.est_pos, alignment);
+            a.est_pos  = applyAlignment(a.est_pos, alignment);
+            a.est_quat = quat_mul(alignment.rotation, a.est_quat);
         }
     }
 
@@ -194,22 +222,49 @@ MetricSet Evaluator::compute(
             size_t j = static_cast<size_t>(it - gt_cum_dist.begin());
             if (j >= aligned.size()) break;
 
-            // Relative translation error.
-            double gt_dist  = vec_dist(aligned[i].gt_pos, aligned[j].gt_pos);
-            double est_dist = vec_dist(aligned[i].est_pos, aligned[j].est_pos);
-            if (gt_dist > 0.0) {
-                trans_errors.push_back(std::abs(est_dist - gt_dist) / gt_dist);
-            }
+            // ── SE(3) relative pose error ───────────────────────────
+            // ΔT_gt  = T_gt_i⁻¹  · T_gt_j
+            // ΔT_est = T_est_i⁻¹ · T_est_j
+            // E      = ΔT_gt⁻¹   · ΔT_est
 
-            // Relative rotation error.
-            rot_errors.push_back(quat_angle_deg(aligned[i].est_quat, aligned[j].est_quat) -
-                                 quat_angle_deg(aligned[i].gt_quat, aligned[j].gt_quat));
+            // GT relative transform.
+            auto qi_gt_inv = quat_conj(aligned[i].gt_quat);
+            auto dq_gt     = quat_mul(qi_gt_inv, aligned[j].gt_quat);
+            std::array<double,3> dp_gt_world = {
+                aligned[j].gt_pos[0] - aligned[i].gt_pos[0],
+                aligned[j].gt_pos[1] - aligned[i].gt_pos[1],
+                aligned[j].gt_pos[2] - aligned[i].gt_pos[2]
+            };
+            auto dt_gt = quat_rotate(qi_gt_inv, dp_gt_world);
+
+            // Estimated relative transform.
+            auto qi_est_inv = quat_conj(aligned[i].est_quat);
+            auto dq_est     = quat_mul(qi_est_inv, aligned[j].est_quat);
+            std::array<double,3> dp_est_world = {
+                aligned[j].est_pos[0] - aligned[i].est_pos[0],
+                aligned[j].est_pos[1] - aligned[i].est_pos[1],
+                aligned[j].est_pos[2] - aligned[i].est_pos[2]
+            };
+            auto dt_est = quat_rotate(qi_est_inv, dp_est_world);
+
+            // Error transform E = ΔT_gt⁻¹ · ΔT_est.
+            auto dq_gt_inv = quat_conj(dq_gt);
+            auto q_err     = quat_mul(dq_gt_inv, dq_est);
+            std::array<double,3> dt_diff = {
+                dt_est[0] - dt_gt[0],
+                dt_est[1] - dt_gt[1],
+                dt_est[2] - dt_gt[2]
+            };
+            auto t_err = quat_rotate(dq_gt_inv, dt_diff);
+
+            trans_errors.push_back(vec_norm(t_err));
+            rot_errors.push_back(quat_angle_deg(q_err));
         }
 
         if (!trans_errors.empty()) {
             double sum_sq = 0.0;
             for (double e : trans_errors) sum_sq += e * e;
-            m.rpe.trans_rmse_m = std::sqrt(sum_sq / trans_errors.size()) * delta_m;
+            m.rpe.trans_rmse_m = std::sqrt(sum_sq / trans_errors.size());
             m.rpe.delta_m = delta_m;
         }
         if (!rot_errors.empty()) {

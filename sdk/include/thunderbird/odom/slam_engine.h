@@ -419,7 +419,7 @@ public:
     ///
     /// Safe to call from any thread while the engine is running.
     /// Returns a copy of the profiler state at the time of the call.
-    [[nodiscard]] ProfileSnapshot profileSnapshot() const noexcept;
+    [[nodiscard]] ProfileSnapshot profileSnapshot() const;
 
     /// Number of IMU samples dropped due to ring buffer overflow.
     [[nodiscard]] size_t imuDropCount() const noexcept;

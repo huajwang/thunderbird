@@ -11,13 +11,24 @@
 //   • Percentile latency breakdown (p50/p95/p99/max) per module.
 //
 // All timings use std::chrono::steady_clock (monotonic, ~ns precision).
-// The profiler is single-threaded (worker thread only) — no atomics needed
-// for internal counters.  The snapshot() method copies data for cross-thread
-// consumption.
+//
+// Thread safety:
+//   • Recording methods (record, markIdle*, sampleMemory) are called from
+//     the worker thread only.
+//   • snapshot() may be called from any thread.  A mutable mutex serialises
+//     snapshot reads against worker writes.  The lock is held only for a
+//     flat memcpy of the module accumulators (~460 KB); percentile
+//     computation (vector alloc + sort) happens after the lock is released,
+//     so worker-thread contention stays sub-millisecond.
 //
 // Overhead:
 //   • 2× clock_gettime per scope (~20–40 ns each on x86).
+//   • 1× mutex lock/unlock per recording (~15–25 ns uncontended).
 //   • Zero heap allocation in the hot path.
+//
+// Worker utilisation is derived as (wall_time − idle_time) / wall_time
+// to avoid double-counting from nested scopes (e.g. ScanTotal wrapping
+// EsikfUpdate).
 //
 // Usage:
 //
@@ -43,6 +54,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 namespace thunderbird::odom {
@@ -69,17 +81,44 @@ public:
     double  min_val() const noexcept { return n_ > 0 ? min_ : 0.0; }
     double  max_val() const noexcept { return max_; }
 
-    /// Compute percentile from the circular history buffer.
+    /// Compute a single percentile from the circular history buffer.
     /// @param pct  Percentile [0, 100].
+    /// @note  For multiple percentiles, prefer percentiles() to avoid
+    ///        redundant O(N log N) sort+copy per call.
     double percentile(double pct) const {
         if (n_ == 0) return 0.0;
+        const size_t len = std::min(n_, kHistorySize);
+        // Use nth_element for O(N) single-percentile query.
+        std::vector<double> buf(history_.data(),
+                                history_.data() + len);
+        const size_t idx = std::min(
+            static_cast<size_t>(pct / 100.0 * static_cast<double>(len - 1)),
+            len - 1);
+        std::nth_element(buf.begin(), buf.begin() + static_cast<ptrdiff_t>(idx),
+                         buf.end());
+        return buf[idx];
+    }
+
+    /// Batch percentile query — sorts the history buffer once and returns
+    /// percentile values for p50, p95, and p99 in a single pass.
+    /// @param[out] p50  50th percentile value.
+    /// @param[out] p95  95th percentile value.
+    /// @param[out] p99  99th percentile value.
+    void percentiles(double& p50, double& p95, double& p99) const {
+        if (n_ == 0) { p50 = p95 = p99 = 0.0; return; }
         const size_t len = std::min(n_, kHistorySize);
         std::vector<double> sorted(history_.data(),
                                    history_.data() + len);
         std::sort(sorted.begin(), sorted.end());
-        const size_t idx = static_cast<size_t>(
-            pct / 100.0 * static_cast<double>(len - 1));
-        return sorted[std::min(idx, len - 1)];
+        auto at = [&](double pct) -> double {
+            const size_t idx = std::min(
+                static_cast<size_t>(pct / 100.0 * static_cast<double>(len - 1)),
+                len - 1);
+            return sorted[idx];
+        };
+        p50 = at(50.0);
+        p95 = at(95.0);
+        p99 = at(99.0);
     }
 
     void reset() noexcept {
@@ -142,12 +181,9 @@ public:
         const auto t1 = Clock::now();
         const double us = std::chrono::duration<double, std::micro>(
             t1 - t0).count();
-        modules_[static_cast<size_t>(mod)].add(us);
 
-        if (mod != ProfileModule::WorkerIdle) {
-            total_busy_ns_ += std::chrono::duration_cast<
-                std::chrono::nanoseconds>(t1 - t0).count();
-        }
+        std::lock_guard<std::mutex> lk(mu_);
+        modules_[static_cast<size_t>(mod)].add(us);
     }
 
     /// Mark the start of an idle wait (call before cv.wait).
@@ -160,6 +196,8 @@ public:
         const auto now = Clock::now();
         const double us = std::chrono::duration<double, std::micro>(
             now - idle_start_).count();
+
+        std::lock_guard<std::mutex> lk(mu_);
         modules_[static_cast<size_t>(ProfileModule::WorkerIdle)].add(us);
         total_idle_ns_ += std::chrono::duration_cast<
             std::chrono::nanoseconds>(now - idle_start_).count();
@@ -177,8 +215,8 @@ public:
     // ── Reset ───────────────────────────────────────────────────────────
 
     void reset() noexcept {
+        std::lock_guard<std::mutex> lk(mu_);
         for (auto& m : modules_) m.reset();
-        total_busy_ns_ = 0;
         total_idle_ns_ = 0;
         peak_rss_      = 0;
         current_rss_   = 0;
@@ -200,11 +238,12 @@ private:
 
     std::array<RollingStats, kProfileModuleCount> modules_{};
 
+    mutable std::mutex mu_;  ///< Serialises snapshot() reads vs worker writes.
+
     TimePoint start_time_;
     TimePoint idle_start_{};
     TimePoint last_idle_end_;
 
-    int64_t total_busy_ns_{0};
     int64_t total_idle_ns_{0};
 
     size_t peak_rss_{0};

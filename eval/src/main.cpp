@@ -26,6 +26,7 @@
 
 #include "thunderbird/odom/slam_engine.h"
 #include "thunderbird/odom/slam_types.h"
+#include "thunderbird/version.h"
 
 #include <array>
 #include <chrono>
@@ -203,7 +204,7 @@ int main(int argc, char* argv[]) {
     auto args = parse_args(argc, argv);
 
     if (args.help)    { print_usage(); return 0; }
-    if (args.version) { std::printf("slam_eval 0.2.0\n"); return 0; }
+    if (args.version) { std::printf("slam_eval %s\n", THUNDERBIRD_VERSION_STRING); return 0; }
 
     // ── Handle stress-test mode ─────────────────────────────────────────
     const bool stress_mode = !args.stress_preset.empty();

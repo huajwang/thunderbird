@@ -1,4 +1,4 @@
-# Thunderbird SLAM � Parameter Sensitivity Analysis
+﻿# Thunderbird SLAM â€” Parameter Sensitivity Analysis
 
 **Method:** One-parameter-at-a-time sweep over stress-test presets
 **Presets:** aggressive_drone (EuRoC proxy), fast_car (KITTI proxy), degenerate_corridor, spinning_top
@@ -168,15 +168,15 @@
 
 | Parameter | Baseline | Recommended | Delta |
 |---|---:|---:|---|
-| `gyro_noise` | 1.0e-03 | 1.0e-03 | � |
+| `gyro_noise` | 1.0e-03 | 1.0e-03 | ï¿½ |
 | `accel_noise` | 0.01 | **1.0e-03** | changed |
-| `gyro_bias_rw` | 1.0e-05 | 1.0e-05 | � |
+| `gyro_bias_rw` | 1.0e-05 | 1.0e-05 | ï¿½ |
 | `accel_bias_rw` | 1.0e-04 | **0.01** | changed |
 | `voxel_resolution` | 0.3 | **0.05** | changed |
 | `convergence_eps` | 1.0e-03 | **0.1** | changed |
-| `min_correspondences` | 20 | 20 | � |
+| `min_correspondences` | 20 | 20 | ï¿½ |
 | `max_iterations` | 5 | **2** | changed |
-| `imu_integration_substeps` | 1 | 1 | � |
+| `imu_integration_substeps` | 1 | 1 | ï¿½ |
 | `plane_noise_sigma` | 0.01 | **0.1** | changed |
 
 ### Car Profile (KITTI-type scenarios)
@@ -185,14 +185,14 @@
 |---|---:|---:|---|
 | `gyro_noise` | 1.0e-03 | **2.0e-04** | changed |
 | `accel_noise` | 0.01 | **0.05** | changed |
-| `gyro_bias_rw` | 1.0e-05 | 1.0e-05 | � |
+| `gyro_bias_rw` | 1.0e-05 | 1.0e-05 | ï¿½ |
 | `accel_bias_rw` | 1.0e-04 | **1.0e-06** | changed |
 | `voxel_resolution` | 0.3 | **0.2** | changed |
 | `convergence_eps` | 1.0e-03 | **1.0e-04** | changed |
-| `min_correspondences` | 20 | 20 | � |
-| `max_iterations` | 5 | 5 | � |
+| `min_correspondences` | 20 | 20 | ï¿½ |
+| `max_iterations` | 5 | 5 | ï¿½ |
 | `imu_integration_substeps` | 1 | **8** | changed |
-| `plane_noise_sigma` | 0.01 | 0.01 | � |
+| `plane_noise_sigma` | 0.01 | 0.01 | ï¿½ |
 
 ### Cross-validation note
 

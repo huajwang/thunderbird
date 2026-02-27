@@ -53,7 +53,7 @@ struct FrameTiming {
     int64_t timestamp_ns{0};
     double  load_ms{0};         // time to read .bin from disk
     double  feed_ms{0};         // feedImu + feedPointCloud
-    double  wait_ms{0};         // waiting for engine output
+    double  wait_ms{0};         // wall time polling for engine output
     double  total_ms{0};        // load + feed + wait
 
     // ── Nanosecond-precision variants (no float truncation) ─────────────
@@ -61,6 +61,8 @@ struct FrameTiming {
     int64_t feed_ns{0};
     int64_t wait_ns{0};
     int64_t total_ns{0};
+
+    bool    output_received{false}; // true if engine produced output within timeout
 };
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -26,7 +26,7 @@
 //       ScopedPerfTimer t(timer, "drain");
 //       engine.drainOutputs(outputs);
 //   }
-//   double drain_ms = timer.elapsed_ms("drain");
+//   double drain_ms = timer.total_ms("drain");
 //
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
@@ -50,7 +50,10 @@ public:
 
     /// Start (or restart) a named timer.
     void start(const std::string& name) {
-        starts_[name] = Clock::now();
+        const auto now_tp = Clock::now();
+        starts_[name] = now_tp;
+        last_name_  = name;
+        last_start_ = now_tp;
     }
 
     /// Stop the named timer and return elapsed milliseconds.

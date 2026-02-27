@@ -26,6 +26,24 @@ FrameStream::Stats FrameStream::replay(
 
     rate_logger.start();
 
+    // Maximum time to poll for engine output before giving up.
+    constexpr auto kOutputTimeout     = std::chrono::milliseconds(200);
+    constexpr auto kLastFrameTimeout  = std::chrono::milliseconds(500);
+    constexpr auto kPollInterval      = std::chrono::microseconds(100);
+
+    // Polls getLatestOutput() until an output arrives or the deadline
+    // expires.  Returns true if an output was received.
+    auto pollForOutput = [&](std::chrono::milliseconds timeout) -> bool {
+        SlamOutput out;
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (engine.getLatestOutput(out))
+                return true;
+            std::this_thread::sleep_for(kPollInterval);
+        }
+        return false;
+    };
+
     size_t imu_batch = 0;  // IMU samples since last LiDAR frame
     FrameTiming current_timing;
     bool   in_frame = false;
@@ -47,9 +65,9 @@ FrameStream::Stats FrameStream::replay(
 
             // If we were accumulating a frame, finalise its timing.
             if (in_frame) {
-                // Wait briefly for engine to produce output.
+                // Poll until engine produces output for the previous frame.
                 timer.start("wait");
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                current_timing.output_received = pollForOutput(kOutputTimeout);
                 current_timing.wait_ms = timer.stop_ms("wait");
                 current_timing.wait_ns = timer.last_stop_ns();
                 current_timing.total_ms = current_timing.load_ms +
@@ -66,8 +84,11 @@ FrameStream::Stats FrameStream::replay(
             in_frame = true;
             frame_wall_start = PerfTimer::now();
 
-            // The load time is tracked inside the adapter (PerfTimer "load_bin").
-            // We track feed time here.
+            // Load time is measured inside the adapter and carried on
+            // the StreamEvent so we can include it in per-frame totals.
+            current_timing.load_ns = ev->load_ns;
+            current_timing.load_ms = static_cast<double>(ev->load_ns) / 1.0e6;
+
             timer.start("feed_cloud");
             engine.feedPointCloud(std::move(cloud));
             current_timing.feed_ms = timer.stop_ms("feed_cloud");
@@ -86,10 +107,10 @@ FrameStream::Stats FrameStream::replay(
         }
     }
 
-    // Finalise last frame.
+    // Finalise last frame (longer timeout — no next feed to trigger processing).
     if (in_frame) {
         timer.start("wait");
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        current_timing.output_received = pollForOutput(kLastFrameTimeout);
         current_timing.wait_ms = timer.stop_ms("wait");
         current_timing.wait_ns = timer.last_stop_ns();
         current_timing.total_ms = current_timing.load_ms +

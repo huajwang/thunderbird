@@ -31,6 +31,7 @@ using namespace thunderbird::odom;
 
 struct StreamEvent {
     int64_t timestamp_ns{0};
+    int64_t load_ns{0};      ///< Time spent loading this datum from disk (0 if N/A).
     std::variant<
         ImuSample,
         std::shared_ptr<const PointCloudFrame>

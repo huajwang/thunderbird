@@ -28,7 +28,7 @@ static size_t read_rss_bytes() {
     if (!f.is_open()) return 0;
     size_t vm_pages = 0, rss_pages = 0;
     f >> vm_pages >> rss_pages;
-    return rss_pages * 4096;  // page size assumption (safe on most Linux)
+    return rss_pages * static_cast<size_t>(sysconf(_SC_PAGESIZE));
 }
 
 struct ProcTimes {
@@ -68,7 +68,10 @@ static ProcTimes read_proc_times() { return {}; }
 
 void ResourceMonitor::start() {
     if (running_.exchange(true)) return;  // already running
-    samples_.clear();
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        samples_.clear();
+    }
     thread_ = std::thread(&ResourceMonitor::run, this);
 }
 
@@ -99,13 +102,22 @@ void ResourceMonitor::run() {
             s.cpu_pct = (cpu_delta / wall_delta) * 100.0;
         }
 
-        samples_.push_back(s);
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            samples_.push_back(s);
+        }
         prev_times = cur_times;
         prev_wall  = now;
     }
 }
 
+std::vector<ResourceSample> ResourceMonitor::samples() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return samples_;
+}
+
 size_t ResourceMonitor::peakRss() const {
+    std::lock_guard<std::mutex> lk(mu_);
     size_t peak = 0;
     for (const auto& s : samples_) {
         if (s.rss_bytes > peak) peak = s.rss_bytes;
@@ -114,6 +126,7 @@ size_t ResourceMonitor::peakRss() const {
 }
 
 double ResourceMonitor::avgCpu() const {
+    std::lock_guard<std::mutex> lk(mu_);
     if (samples_.empty()) return 0.0;
     double sum = 0.0;
     for (const auto& s : samples_) sum += s.cpu_pct;

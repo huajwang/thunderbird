@@ -102,8 +102,8 @@ double position_distance(const std::array<double,3>& a,
 //  SlamProfiler — snapshot
 // ═════════════════════════════════════════════════════════════════════════════
 
-ProfileSnapshot SlamProfiler::snapshot() const noexcept {
-    ProfileSnapshot snap;
+SlamProfileSnapshot SlamProfiler::snapshot() const {
+    SlamProfileSnapshot snap;
     snap.timestamp_ns = profiler_now_ns();
     snap.uptime_s = static_cast<double>(snap.timestamp_ns - start_time_ns_) / 1.0e9;
 
@@ -221,7 +221,7 @@ void SlamProfiler::compute_drift() noexcept {
 //  Report generation — JSON
 // ═════════════════════════════════════════════════════════════════════════════
 
-std::string SlamProfiler::report_json(const ProfileSnapshot& snap) {
+std::string SlamProfiler::report_json(const SlamProfileSnapshot& snap) {
     std::ostringstream os;
     os << "{\n";
     os << "  \"timestamp_ns\": " << snap.timestamp_ns << ",\n";
@@ -289,7 +289,7 @@ std::string SlamProfiler::report_json(const ProfileSnapshot& snap) {
 //  Report generation — CSV
 // ═════════════════════════════════════════════════════════════════════════════
 
-std::string SlamProfiler::report_csv(const ProfileSnapshot& snap) {
+std::string SlamProfiler::report_csv(const SlamProfileSnapshot& snap) {
     std::ostringstream os;
     os << "probe,count,mean_us,min_us,max_us,p50_us,p95_us,p99_us,total_ms\n";
     for (const auto& p : snap.probes) {
@@ -310,7 +310,7 @@ std::string SlamProfiler::report_csv(const ProfileSnapshot& snap) {
 //  Report generation — text
 // ═════════════════════════════════════════════════════════════════════════════
 
-std::string SlamProfiler::report_text(const ProfileSnapshot& snap) {
+std::string SlamProfiler::report_text(const SlamProfileSnapshot& snap) {
     std::ostringstream os;
 
     os << "═══════════════════════════════════════════════════════════════════\n";

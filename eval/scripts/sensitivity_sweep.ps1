@@ -8,9 +8,9 @@
     Reproducible: deterministic stress presets (fixed seeds), config-driven.
 #>
 param(
-    [string]$EvalBin   = "C:\data\github\thunderbird\build\eval\slam_eval.exe",
-    [string]$OutputDir = "C:\data\github\thunderbird\build\sensitivity",
-    [string]$SdkDll    = "C:\data\github\thunderbird\build\sdk"
+    [string]$EvalBin   = (Join-Path $PSScriptRoot "..\..\build\eval\slam_eval.exe"),
+    [string]$OutputDir = (Join-Path $PSScriptRoot "..\..\build\sensitivity"),
+    [string]$SdkDll    = (Join-Path $PSScriptRoot "..\..\build\sdk")
 )
 
 # ── Ensure SDK DLL is in PATH ───────────────────────────────────────────────

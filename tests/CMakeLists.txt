@@ -40,3 +40,7 @@ add_test(NAME SlamBenchmark COMMAND test_slam_benchmark --no-plans)
 add_executable(test_slam_health test_slam_health.cpp)
 target_link_libraries(test_slam_health PRIVATE thunderbird_sdk)
 add_test(NAME SlamHealth COMMAND test_slam_health)
+
+add_executable(test_runtime_profiler test_runtime_profiler.cpp)
+target_link_libraries(test_runtime_profiler PRIVATE thunderbird_sdk Threads::Threads)
+add_test(NAME RuntimeProfiler COMMAND test_runtime_profiler)

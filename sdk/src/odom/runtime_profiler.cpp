@@ -16,13 +16,14 @@
 
 #include <fstream>
 #include <string>
+#include <unistd.h>
 
 static size_t query_rss_bytes() {
     std::ifstream f("/proc/self/statm");
     if (!f.is_open()) return 0;
     size_t vm_pages = 0, rss_pages = 0;
     f >> vm_pages >> rss_pages;
-    return rss_pages * 4096;  // standard page size
+    return rss_pages * static_cast<size_t>(sysconf(_SC_PAGESIZE));
 }
 
 #elif defined(_WIN32)
@@ -66,7 +67,9 @@ static size_t query_rss_bytes() { return 0; }
 namespace thunderbird::odom {
 
 void RuntimeProfiler::sampleMemory() noexcept {
-    current_rss_ = query_rss_bytes();
+    const size_t rss = query_rss_bytes();
+    std::lock_guard<std::mutex> lk(mu_);
+    current_rss_ = rss;
     if (current_rss_ > peak_rss_) {
         peak_rss_ = current_rss_;
     }
@@ -76,15 +79,37 @@ ProfileSnapshot RuntimeProfiler::snapshot() const {
     ProfileSnapshot snap{};
 
     const auto now = Clock::now();
-    snap.wall_time_s = std::chrono::duration<double>(
-        now - start_time_).count();
 
-    // ── Per-module statistics ───────────────────────────────────────────
+    // ── Copy raw data under the lock ────────────────────────────────────
+    // We memcpy the module accumulators and scalar state, then release the
+    // mutex *before* computing percentiles (which allocate + sort).  This
+    // keeps lock hold time proportional to a flat copy (~460 KB memcpy)
+    // rather than O(N log N) sorting per module.
+    // start_time_ is also read here because reset() writes it under mu_.
+    std::array<RollingStats, kProfileModuleCount> mod_copy;
+    int64_t idle_ns_copy;
+    size_t  peak_rss_copy;
+    size_t  curr_rss_copy;
+    TimePoint start_copy;
+
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        mod_copy      = modules_;
+        idle_ns_copy  = total_idle_ns_;
+        peak_rss_copy = peak_rss_;
+        curr_rss_copy = current_rss_;
+        start_copy    = start_time_;
+    }
+
+    snap.wall_time_s = std::chrono::duration<double>(
+        now - start_copy).count();
+
+    // ── Per-module statistics (lock released) ───────────────────────────
     const double scan_total_us =
-        modules_[static_cast<size_t>(ProfileModule::ScanTotal)].sum();
+        mod_copy[static_cast<size_t>(ProfileModule::ScanTotal)].sum();
 
     for (size_t i = 0; i < kProfileModuleCount; ++i) {
-        const auto& rs = modules_[i];
+        const auto& rs = mod_copy[i];
         auto& mp       = snap.modules[i];
 
         mp.name        = kModuleNames[i];
@@ -95,9 +120,7 @@ ProfileSnapshot RuntimeProfiler::snapshot() const {
         mp.total_ms    = rs.sum() / 1000.0;
 
         if (rs.count() > 0) {
-            mp.p50_us = rs.percentile(50.0);
-            mp.p95_us = rs.percentile(95.0);
-            mp.p99_us = rs.percentile(99.0);
+            rs.percentiles(mp.p50_us, mp.p95_us, mp.p99_us);
         }
 
         // CPU% relative to ScanTotal (only for sub-modules).
@@ -110,31 +133,38 @@ ProfileSnapshot RuntimeProfiler::snapshot() const {
     }
 
     // ── Worker utilisation ──────────────────────────────────────────────
-    const int64_t total_ns = total_busy_ns_ + total_idle_ns_;
-    if (total_ns > 0) {
+    // Derive busy time as wall_time − idle_time.  This avoids double-
+    // counting from nested scopes (e.g. ScanTotal wrapping EsikfUpdate).
+    // Only meaningful once at least one idle period has been observed.
+    const int64_t wall_ns = std::chrono::duration_cast<
+        std::chrono::nanoseconds>(now - start_copy).count();
+    if (wall_ns > 0 && idle_ns_copy > 0) {
+        const int64_t busy_ns = wall_ns - idle_ns_copy;
         snap.worker_utilization_pct =
-            static_cast<double>(total_busy_ns_) /
-            static_cast<double>(total_ns) * 100.0;
+            std::max(0.0, static_cast<double>(busy_ns) /
+                          static_cast<double>(wall_ns) * 100.0);
     }
 
     // ── Memory ──────────────────────────────────────────────────────────
-    snap.peak_rss_bytes    = peak_rss_;
-    snap.current_rss_bytes = current_rss_;
+    snap.peak_rss_bytes    = peak_rss_copy;
+    snap.current_rss_bytes = curr_rss_copy;
 
     // ── Scan latency summary (from ScanTotal module) ────────────────────
-    const auto& st = modules_[static_cast<size_t>(ProfileModule::ScanTotal)];
+    const auto& st = mod_copy[static_cast<size_t>(ProfileModule::ScanTotal)];
     snap.total_scans = st.count();
     if (st.count() > 0) {
         snap.avg_scan_latency_ms = st.mean() / 1000.0;
-        snap.p50_scan_latency_ms = st.percentile(50.0) / 1000.0;
-        snap.p95_scan_latency_ms = st.percentile(95.0) / 1000.0;
-        snap.p99_scan_latency_ms = st.percentile(99.0) / 1000.0;
+        double p50_us, p95_us, p99_us;
+        st.percentiles(p50_us, p95_us, p99_us);
+        snap.p50_scan_latency_ms = p50_us / 1000.0;
+        snap.p95_scan_latency_ms = p95_us / 1000.0;
+        snap.p99_scan_latency_ms = p99_us / 1000.0;
         snap.max_scan_latency_ms = st.max_val() / 1000.0;
     }
 
     // ── IMU sample count ────────────────────────────────────────────────
     snap.total_imu_samples =
-        modules_[static_cast<size_t>(ProfileModule::ImuPropagate)].count();
+        mod_copy[static_cast<size_t>(ProfileModule::ImuPropagate)].count();
 
     return snap;
 }

@@ -371,9 +371,6 @@ struct AcmeSlamEngine::Impl {
         using clock = std::chrono::steady_clock;
         const auto t0 = clock::now();
 
-        // Start scan-total profiling scope.
-        RuntimeProfiler::Scope scan_scope(profiler, ProfileModule::ScanTotal);
-
         // ── 3a: Deskew ──────────────────────────────────────────────
         std::shared_ptr<PointCloudFrame> deskewed;
         {
@@ -388,6 +385,11 @@ struct AcmeSlamEngine::Impl {
         }
 
         if (!deskewed || deskewed->points.empty()) return true;
+
+        // Start scan-total profiling scope *after* confirming we have a
+        // usable cloud.  Early returns above must not record a ScanTotal
+        // sample, which would skew total_scans / latency percentiles.
+        RuntimeProfiler::Scope scan_scope(profiler, ProfileModule::ScanTotal);
 
         // ── 3b: ESIKF iterated update ───────────────────────────────
         bool update_ok;
@@ -724,7 +726,7 @@ size_t AcmeSlamEngine::cloudDropCount() const noexcept {
     return impl_->cloud_ring.dropped();
 }
 
-ProfileSnapshot AcmeSlamEngine::profileSnapshot() const noexcept {
+ProfileSnapshot AcmeSlamEngine::profileSnapshot() const {
     return impl_->profiler.snapshot();
 }
 

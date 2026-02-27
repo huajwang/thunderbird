@@ -90,6 +90,7 @@ private:
 
     // ── Pending LiDAR (held while IMU buffer drains) ────────────────────
     std::shared_ptr<const PointCloudFrame> pending_cloud_;
+    int64_t                  pending_load_ns_{0};
     size_t                   pending_cursor_{0};
     bool                     has_pending_cloud_{false};
 
@@ -196,6 +197,7 @@ std::optional<StreamEvent> KittiAdapter::next() {
     if (has_pending_cloud_) {
         StreamEvent ev;
         ev.timestamp_ns = pending_cloud_->timestamp_ns;
+        ev.load_ns      = pending_load_ns_;
         ev.payload      = std::move(pending_cloud_);
         has_pending_cloud_ = false;
         pending_cloud_.reset();
@@ -210,6 +212,7 @@ std::optional<StreamEvent> KittiAdapter::next() {
     timer_.start("load_bin");
     auto cloud = loadBin(cursor_);
     const double load_ms = timer_.stop_ms("load_bin");
+    const int64_t load_ns = timer_.last_stop_ns();
 
     if (!cloud) {
         std::cerr << "[kitti] failed to load " << bin_paths_[cursor_] << "\n";
@@ -239,6 +242,7 @@ std::optional<StreamEvent> KittiAdapter::next() {
 
             // Temporarily stash the loaded cloud.
             pending_cloud_ = std::move(cloud);
+            pending_load_ns_ = load_ns;
             pending_cursor_ = cursor_;
             has_pending_cloud_ = true;
 
@@ -258,6 +262,7 @@ std::optional<StreamEvent> KittiAdapter::next() {
 
     StreamEvent ev;
     ev.timestamp_ns = cloud->timestamp_ns;
+    ev.load_ns      = load_ns;
     ev.payload      = std::move(cloud);
 
     ++cursor_;

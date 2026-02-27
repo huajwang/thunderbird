@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -22,12 +23,18 @@ struct ResourceSample {
 };
 
 /// Lightweight CPU/memory sampler.  Start before replay, stop after.
+///
+/// Thread safety:
+///   start()/stop() must be called from the main thread.
+///   peakRss(), avgCpu(), and samples() are safe to call from any
+///   thread (including while the monitor is running).
 class ResourceMonitor {
 public:
     void start();
     void stop();
 
-    const std::vector<ResourceSample>& samples() const { return samples_; }
+    /// Return a snapshot copy of all samples collected so far.
+    std::vector<ResourceSample> samples() const;
 
     /// Peak RSS observed across all samples.
     size_t peakRss() const;
@@ -36,9 +43,10 @@ public:
     double avgCpu() const;
 
 private:
-    std::atomic<bool>          running_{false};
-    std::thread                thread_;
-    std::vector<ResourceSample> samples_;
+    std::atomic<bool>           running_{false};
+    std::thread                 thread_;
+    mutable std::mutex          mu_;       ///< Protects samples_.
+    std::vector<ResourceSample> samples_;  ///< Guarded by mu_.
 
     void run();
 };

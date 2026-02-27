@@ -104,90 +104,247 @@ std::array<double,16> horn_detail::buildN(
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  Jacobi eigenvalue solver for 4×4 symmetric matrix
+//  Analytical eigenvalue solver for 4×4 symmetric matrix
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// Finds ALL eigenvalues/eigenvectors, then returns the eigenvector for the
-// largest eigenvalue.  Jacobi is overkill for 4×4 but is bullet-proof and
-// requires zero external dependencies.
+// Closed-form O(1) solver for the maximum eigenvector of a 4×4 symmetric
+// matrix (Horn's N matrix).  Replaces the iterative Jacobi scheme.
+//
+// Algorithm:
+//   1. Compute the characteristic polynomial λ⁴ − c₃λ³ + c₂λ² − c₁λ + c₀ = 0.
+//   2. Reduce to a depressed quartic u⁴ + pu² + qu + r = 0 (Ferrari).
+//   3. Solve the resolvent cubic via Vieta's trigonometric formula
+//      (all roots real for symmetric matrices).
+//   4. Factor the quartic into two quadratics, solve both.
+//   5. Pick the largest eigenvalue λ_max, polish with Newton–Raphson.
+//   6. Recover the eigenvector from the adjugate of (A − λ_max·I).
+//
+// Complexity: O(1) constant time, zero iteration.
+// Dependencies: <cmath> only.
 
 Quat4 horn_detail::maxEigenvector4x4(const std::array<double,16>& N_in) {
-    constexpr int SZ = 4;
-    constexpr int MAX_ITER = 100;
-    constexpr double EPS = 1e-15;
+    constexpr double EPS = 1e-14;
 
-    // Working copy of N (symmetric, row-major).
-    double A[SZ][SZ];
-    for (int i = 0; i < SZ; ++i)
-        for (int j = 0; j < SZ; ++j)
-            A[i][j] = N_in[i*SZ + j];
+    // ── 3×3 determinant helper ──────────────────────────────────────────
+    auto det3 = [](double a11, double a12, double a13,
+                   double a21, double a22, double a23,
+                   double a31, double a32, double a33) -> double {
+        return a11*(a22*a33 - a23*a32)
+             - a12*(a21*a33 - a23*a31)
+             + a13*(a21*a32 - a22*a31);
+    };
 
-    // Eigenvector matrix (starts as identity).
-    double V[SZ][SZ] = {};
-    for (int i = 0; i < SZ; ++i) V[i][i] = 1.0;
+    // 3×3 determinant for a symmetric matrix [a b c; b d e; c e f].
+    auto det3sym = [](double a, double b, double c,
+                      double d, double e, double f) -> double {
+        return a*(d*f - e*e) - b*(b*f - c*e) + c*(b*e - c*d);
+    };
 
-    for (int iter = 0; iter < MAX_ITER; ++iter) {
-        // Find the largest off-diagonal element.
-        int p = 0, q = 1;
-        double max_off = 0.0;
-        for (int i = 0; i < SZ; ++i) {
-            for (int j = i+1; j < SZ; ++j) {
-                if (std::abs(A[i][j]) > max_off) {
-                    max_off = std::abs(A[i][j]);
-                    p = i; q = j;
-                }
-            }
-        }
-        if (max_off < EPS) break;  // converged
+    // ── Extract upper triangle (matrix is symmetric) ────────────────────
+    const double a00 = N_in[0],  a01 = N_in[1],  a02 = N_in[2],  a03 = N_in[3];
+    const double a11 = N_in[5],  a12 = N_in[6],  a13 = N_in[7];
+    const double a22 = N_in[10], a23 = N_in[11];
+    const double a33 = N_in[15];
 
-        // Compute Jacobi rotation.
-        double app = A[p][p], aqq = A[q][q], apq = A[p][q];
-        double theta;
-        if (std::abs(app - aqq) < EPS) {
-            theta = M_PI / 4.0;
+    // ════════════════════════════════════════════════════════════════════
+    //  Step 1: Characteristic polynomial  λ⁴ − c₃λ³ + c₂λ² − c₁λ + c₀ = 0
+    // ════════════════════════════════════════════════════════════════════
+
+    // c₃ = tr(A)
+    const double c3 = a00 + a11 + a22 + a33;
+
+    // c₂ = Σ 2×2 principal minors
+    const double c2 = (a00*a11 - a01*a01) + (a00*a22 - a02*a02)
+                    + (a00*a33 - a03*a03) + (a11*a22 - a12*a12)
+                    + (a11*a33 - a13*a13) + (a22*a33 - a23*a23);
+
+    // c₁ = Σ 3×3 principal minors (cofactors of each diagonal element)
+    const double c1 = det3sym(a11, a12, a13, a22, a23, a33)   // M₀₀
+                    + det3sym(a00, a02, a03, a22, a23, a33)    // M₁₁
+                    + det3sym(a00, a01, a03, a11, a13, a33)    // M₂₂
+                    + det3sym(a00, a01, a02, a11, a12, a22);   // M₃₃
+
+    // c₀ = det(A) via cofactor expansion along row 0
+    const double c0 =
+          a00 * det3(a11,a12,a13, a12,a22,a23, a13,a23,a33)
+        - a01 * det3(a01,a12,a13, a02,a22,a23, a03,a23,a33)
+        + a02 * det3(a01,a11,a13, a02,a12,a23, a03,a13,a33)
+        - a03 * det3(a01,a11,a12, a02,a12,a22, a03,a13,a23);
+
+    // ════════════════════════════════════════════════════════════════════
+    //  Step 2: Depressed quartic  u⁴ + pu² + qu + r = 0  via  λ = u + c₃/4
+    // ════════════════════════════════════════════════════════════════════
+
+    // Standard monic form: x⁴ + ax³ + bx² + cx + d = 0
+    //   a = -c₃,  b = c₂,  c = -c₁,  d = c₀
+    const double qa = -c3;
+    const double qa2 = qa * qa;
+    const double p  =  c2 - 3.0 * qa2 / 8.0;
+    // q = a³/8 − ab/2 + c = (−c₃)³/8 − (−c₃)(c₂)/2 + (−c₁)
+    const double qq =  qa * qa2 / 8.0 - qa * c2 / 2.0 - c1;
+    const double rr = -3.0 * qa2 * qa2 / 256.0 + qa2 * c2 / 16.0 + qa * c1 / 4.0 + c0;
+    const double shift = c3 / 4.0;   //  λ = u + c₃/4
+
+    // ════════════════════════════════════════════════════════════════════
+    //  Step 3–4: Solve the quartic
+    // ════════════════════════════════════════════════════════════════════
+
+    double roots[4];
+
+    if (std::abs(qq) < EPS) {
+        // ── Biquadratic u⁴ + pu² + r = 0  →  w² + pw + r = 0 ──────────
+        double disc = p * p - 4.0 * rr;
+        if (disc < 0.0) disc = 0.0;
+        const double sd = std::sqrt(disc);
+        const double w1 = (-p + sd) / 2.0;
+        const double w2 = (-p - sd) / 2.0;
+        const double sw1 = std::sqrt(std::max(w1, 0.0));
+        const double sw2 = std::sqrt(std::max(w2, 0.0));
+        roots[0] =  sw1 + shift;
+        roots[1] = -sw1 + shift;
+        roots[2] =  sw2 + shift;
+        roots[3] = -sw2 + shift;
+    } else {
+        // ── Ferrari's resolvent cubic ───────────────────────────────────
+        //
+        //   8m³ + 8pm² + (2p²−8r)m − q² = 0
+        //   → m³ + p·m² + (p²−4r)/4·m − q²/8 = 0
+        //
+        // Depress via m = w − p/3:
+        //   w³ + hw + g = 0
+        //
+        const double rc_b = (p * p - 4.0 * rr) / 4.0;
+        const double rc_c = -qq * qq / 8.0;
+        const double h = rc_b - p * p / 3.0;        // = (−p² − 12r)/12
+        const double g = 2.0*p*p*p/27.0 - p*rc_b/3.0 + rc_c;
+
+        double m;
+        if (std::abs(h) < EPS) {
+            // Degenerate cubic: w³ ≈ −g
+            m = std::cbrt(-g) - p / 3.0;
+        } else if (h < 0.0) {
+            // ── Vieta's trigonometric formula (3 real roots) ─────────────
+            const double neg_h = -h;
+            const double k = 2.0 * std::sqrt(neg_h / 3.0);
+            double cos_arg = -3.0 * g * std::sqrt(3.0)
+                           / (2.0 * neg_h * std::sqrt(neg_h));
+            if (cos_arg >  1.0) cos_arg =  1.0;
+            if (cos_arg < -1.0) cos_arg = -1.0;
+            const double phi = std::acos(cos_arg) / 3.0;
+
+            const double w0 = k * std::cos(phi);
+            const double w1 = k * std::cos(phi - 2.0 * M_PI / 3.0);
+            const double w2 = k * std::cos(phi - 4.0 * M_PI / 3.0);
+
+            // Pick the largest root (guaranteed positive for all-real quartic).
+            m = std::max({w0, w1, w2}) - p / 3.0;
         } else {
-            theta = 0.5 * std::atan2(2.0 * apq, app - aqq);
-        }
-        double c = std::cos(theta), s = std::sin(theta);
-
-        // Apply rotation to A: A' = G^T A G.
-        // Update rows/cols p and q of A.
-        double new_pp = c*c*app + 2*s*c*apq + s*s*aqq;
-        double new_qq = s*s*app - 2*s*c*apq + c*c*aqq;
-        A[p][p] = new_pp;
-        A[q][q] = new_qq;
-        A[p][q] = A[q][p] = 0.0;  // zeroed by design
-
-        for (int r = 0; r < SZ; ++r) {
-            if (r == p || r == q) continue;
-            double arp = A[r][p], arq = A[r][q];
-            A[r][p] = A[p][r] = c*arp + s*arq;
-            A[r][q] = A[q][r] = -s*arp + c*arq;
+            // ── Cardano fallback (one real root) ────────────────────────
+            const double D = g*g/4.0 + h*h*h/27.0;
+            const double sqrtD = std::sqrt(std::max(D, 0.0));
+            m = std::cbrt(-g/2.0 + sqrtD) + std::cbrt(-g/2.0 - sqrtD) - p / 3.0;
         }
 
-        // Accumulate eigenvectors.
-        for (int r = 0; r < SZ; ++r) {
-            double vp = V[r][p], vq = V[r][q];
-            V[r][p] = c*vp + s*vq;
-            V[r][q] = -s*vp + c*vq;
-        }
+        // Ensure m > 0 (required for s = √(2m)).
+        if (m < EPS) m = EPS;
+
+        // ── Factor into two quadratics ──────────────────────────────────
+        //   (u² − su + α)(u² + su + β) = 0
+        //   where s = √(2m), α = p/2 + m + q/(2s), β = p/2 + m − q/(2s)
+        const double s  = std::sqrt(2.0 * m);
+        const double al = p / 2.0 + m + qq / (2.0 * s);
+        const double be = p / 2.0 + m - qq / (2.0 * s);
+
+        double d1 = s * s - 4.0 * al;
+        if (d1 < 0.0) d1 = 0.0;
+        const double sd1 = std::sqrt(d1);
+        roots[0] = ( s + sd1) / 2.0 + shift;
+        roots[1] = ( s - sd1) / 2.0 + shift;
+
+        double d2 = s * s - 4.0 * be;
+        if (d2 < 0.0) d2 = 0.0;
+        const double sd2 = std::sqrt(d2);
+        roots[2] = (-s + sd2) / 2.0 + shift;
+        roots[3] = (-s - sd2) / 2.0 + shift;
     }
 
-    // Find index of largest eigenvalue.
-    int best = 0;
-    for (int i = 1; i < SZ; ++i) {
-        if (A[i][i] > A[best][best]) best = i;
+    // ════════════════════════════════════════════════════════════════════
+    //  Step 5: Largest eigenvalue + Newton–Raphson polish
+    // ════════════════════════════════════════════════════════════════════
+
+    double lam = roots[0];
+    for (int i = 1; i < 4; ++i)
+        if (roots[i] > lam) lam = roots[i];
+
+    // Two Newton iterations on f(λ) = λ⁴ − c₃λ³ + c₂λ² − c₁λ + c₀.
+    for (int i = 0; i < 2; ++i) {
+        const double l2 = lam * lam;
+        const double f  = l2*l2 - c3*l2*lam + c2*l2 - c1*lam + c0;
+        const double fp = 4.0*l2*lam - 3.0*c3*l2 + 2.0*c2*lam - c1;
+        if (std::abs(fp) > EPS) lam -= f / fp;
     }
 
-    // Extract corresponding eigenvector and normalise.
-    Quat4 q = {V[0][best], V[1][best], V[2][best], V[3][best]};
-    double n = std::sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
-    if (n > 0.0) { q[0]/=n; q[1]/=n; q[2]/=n; q[3]/=n; }
+    // ════════════════════════════════════════════════════════════════════
+    //  Step 6: Eigenvector via adjugate of B = (A − λ_max·I)
+    // ════════════════════════════════════════════════════════════════════
+    //
+    // B is rank 3.  Any non-zero column of adj(B) is the null vector.
+    // We try all 4 columns and pick the one with the largest norm² for
+    // numerical stability.
+
+    const double b00 = a00 - lam, b01 = a01, b02 = a02, b03 = a03;
+    const double b11 = a11 - lam, b12 = a12, b13 = a13;
+    const double b22 = a22 - lam, b23 = a23;
+    const double b33 = a33 - lam;
+
+    Quat4 ev{};
+    double best_n2 = 0.0;
+
+    // Column 0: adj(B)_{j,0} = (−1)^j · M_{0j}
+    {
+        double v0 =  det3(b11,b12,b13, b12,b22,b23, b13,b23,b33);
+        double v1 = -det3(b01,b12,b13, b02,b22,b23, b03,b23,b33);
+        double v2 =  det3(b01,b11,b13, b02,b12,b23, b03,b13,b33);
+        double v3 = -det3(b01,b11,b12, b02,b12,b22, b03,b13,b23);
+        double n2 = v0*v0 + v1*v1 + v2*v2 + v3*v3;
+        if (n2 > best_n2) { best_n2 = n2; ev = {v0, v1, v2, v3}; }
+    }
+    // Column 1: adj(B)_{j,1} = (−1)^{j+1} · M_{1j}
+    {
+        double v0 = -det3(b01,b02,b03, b12,b22,b23, b13,b23,b33);
+        double v1 =  det3(b00,b02,b03, b02,b22,b23, b03,b23,b33);
+        double v2 = -det3(b00,b01,b03, b02,b12,b23, b03,b13,b33);
+        double v3 =  det3(b00,b01,b02, b02,b12,b22, b03,b13,b23);
+        double n2 = v0*v0 + v1*v1 + v2*v2 + v3*v3;
+        if (n2 > best_n2) { best_n2 = n2; ev = {v0, v1, v2, v3}; }
+    }
+    // Column 2: adj(B)_{j,2} = (−1)^j · M_{2j}
+    {
+        double v0 =  det3(b01,b02,b03, b11,b12,b13, b13,b23,b33);
+        double v1 = -det3(b00,b02,b03, b01,b12,b13, b03,b23,b33);
+        double v2 =  det3(b00,b01,b03, b01,b11,b13, b03,b13,b33);
+        double v3 = -det3(b00,b01,b02, b01,b11,b12, b03,b13,b23);
+        double n2 = v0*v0 + v1*v1 + v2*v2 + v3*v3;
+        if (n2 > best_n2) { best_n2 = n2; ev = {v0, v1, v2, v3}; }
+    }
+    // Column 3: adj(B)_{j,3} = (−1)^{j+1} · M_{3j}
+    {
+        double v0 = -det3(b01,b02,b03, b11,b12,b13, b12,b22,b23);
+        double v1 =  det3(b00,b02,b03, b01,b12,b13, b02,b22,b23);
+        double v2 = -det3(b00,b01,b03, b01,b11,b13, b02,b12,b23);
+        double v3 =  det3(b00,b01,b02, b01,b11,b12, b02,b12,b22);
+        double n2 = v0*v0 + v1*v1 + v2*v2 + v3*v3;
+        if (n2 > best_n2) { best_n2 = n2; ev = {v0, v1, v2, v3}; }
+    }
+
+    // Normalise.
+    double n = std::sqrt(best_n2);
+    if (n > 0.0) { ev[0]/=n; ev[1]/=n; ev[2]/=n; ev[3]/=n; }
 
     // Ensure w > 0 for canonical form.
-    if (q[0] < 0.0) { q[0]=-q[0]; q[1]=-q[1]; q[2]=-q[2]; q[3]=-q[3]; }
+    if (ev[0] < 0.0) { ev[0]=-ev[0]; ev[1]=-ev[1]; ev[2]=-ev[2]; ev[3]=-ev[3]; }
 
-    return q;
+    return ev;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

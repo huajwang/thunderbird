@@ -254,8 +254,9 @@ def main() -> int:
         try:
             with open(json_path) as fh:
                 dataset_name = json.load(fh).get("dataset", "")
-        except (json.JSONDecodeError, KeyError):
-            pass
+        except (json.JSONDecodeError, KeyError) as exc:
+            print(f"[plot] warning: could not read dataset name from {json_path}: {exc}",
+                  file=sys.stderr)
 
     has_gt = gt_path.exists()
 

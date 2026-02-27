@@ -302,6 +302,8 @@ void ImuInterpolator::quatNormalize(std::array<double,4>& q) {
     double n = std::sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
     if (n > 0.0) {
         for (auto& c : q) c /= n;
+    } else {
+        q = {1.0, 0.0, 0.0, 0.0};  // degenerate → identity
     }
 }
 
