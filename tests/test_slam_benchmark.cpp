@@ -287,7 +287,7 @@ std::vector<GroundTruthPose> generate_ground_truth(
 struct BenchmarkResult {
     std::string scenario_name;
     bool        passed{true};
-    ProfileSnapshot profile;
+    SlamProfileSnapshot profile;
 
     // Per-metric pass/fail.
     bool latency_ok{true};

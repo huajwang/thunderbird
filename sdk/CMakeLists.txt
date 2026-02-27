@@ -13,6 +13,9 @@ target_include_directories(thunderbird_sdk_objects
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
 )
 target_link_libraries(thunderbird_sdk_objects PUBLIC Threads::Threads)
+if(WIN32)
+    target_link_libraries(thunderbird_sdk_objects PUBLIC Psapi)
+endif()
 if(THUNDERBIRD_USE_SIMULATED)
     target_compile_definitions(thunderbird_sdk_objects PUBLIC THUNDERBIRD_SIMULATED=1)
 endif()

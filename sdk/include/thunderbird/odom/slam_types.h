@@ -320,6 +320,58 @@ struct OdometryStats {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  Runtime profiling types  —  module-level performance breakdown
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Identifies a profiled processing module inside AcmeSlamEngine.
+enum class ProfileModule : uint8_t {
+    ImuPropagate  = 0,   ///< ESIKF propagation per IMU sample
+    Deskew        = 1,   ///< Point cloud motion compensation
+    EsikfUpdate   = 2,   ///< ESIKF iterated Kalman update
+    IkdInsert     = 3,   ///< ikd-Tree point insertion
+    IkdRebalance  = 4,   ///< ikd-Tree periodic rebalancing
+    ScanTotal     = 5,   ///< Full per-scan processing (3a–3e)
+    WorkerIdle    = 6,   ///< Worker thread idle/wait time
+    Count_                ///< Sentinel — number of modules
+};
+
+constexpr size_t kProfileModuleCount =
+    static_cast<size_t>(ProfileModule::Count_);
+
+/// Per-module timing statistics.
+struct ModuleProfile {
+    const char* name{""};        ///< Human-readable module name
+    double avg_us{0};            ///< Mean execution time (µs)
+    double min_us{0};            ///< Minimum observed (µs)
+    double max_us{0};            ///< Maximum observed (µs)
+    double p50_us{0};            ///< Median (µs)
+    double p95_us{0};            ///< 95th percentile (µs)
+    double p99_us{0};            ///< 99th percentile (µs)
+    double total_ms{0};          ///< Cumulative time (ms)
+    size_t invocations{0};       ///< Number of calls
+    double cpu_pct{0};           ///< Fraction of ScanTotal wall time (%)
+};
+
+/// Full profiling snapshot — call AcmeSlamEngine::profileSnapshot().
+struct ProfileSnapshot {
+    ModuleProfile modules[kProfileModuleCount]{};
+
+    double worker_utilization_pct{0};   ///< % time worker thread is busy
+    size_t peak_rss_bytes{0};           ///< Highest RSS observed (bytes)
+    size_t current_rss_bytes{0};        ///< RSS at snapshot time (bytes)
+
+    double avg_scan_latency_ms{0};      ///< Mean per-scan total (ms)
+    double p50_scan_latency_ms{0};
+    double p95_scan_latency_ms{0};
+    double p99_scan_latency_ms{0};
+    double max_scan_latency_ms{0};
+
+    size_t total_scans{0};
+    size_t total_imu_samples{0};
+    double wall_time_s{0};              ///< Time since profiler start
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  Callback typedefs
 // ═════════════════════════════════════════════════════════════════════════════
 

@@ -52,7 +52,7 @@
 //        .count++, .sum += dt, min/max, histogram[bucket]++
 //           │
 //           ▼
-//    SlamProfiler::snapshot()  →  ProfileSnapshot (value type, copyable)
+//    SlamProfiler::snapshot()  →  SlamProfileSnapshot (value type, copyable)
 //           │
 //           ▼
 //    report_json() / report_csv() / report_text()
@@ -301,10 +301,10 @@ struct DriftMetrics {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  ProfileSnapshot — complete profiling report at a point in time
+//  SlamProfileSnapshot — complete profiling report at a point in time
 // ═════════════════════════════════════════════════════════════════════════════
 
-struct ProfileSnapshot {
+struct SlamProfileSnapshot {
     int64_t                    timestamp_ns{0};
     std::vector<ProbeSnapshot> probes;
     MemoryMetrics              memory;
@@ -436,7 +436,7 @@ public:
 
     /// Capture a consistent snapshot of all probes + system metrics.
     /// This is a read-only operation — safe to call from any thread.
-    [[nodiscard]] ProfileSnapshot snapshot() const noexcept;
+    [[nodiscard]] SlamProfileSnapshot snapshot() const;
 
     // ── System metrics (populated by snapshot()) ────────────────────────
 
@@ -467,13 +467,13 @@ public:
     // ── Report generation ───────────────────────────────────────────────
 
     /// Generate a JSON report string from a snapshot.
-    [[nodiscard]] static std::string report_json(const ProfileSnapshot& snap);
+    [[nodiscard]] static std::string report_json(const SlamProfileSnapshot& snap);
 
     /// Generate a CSV report (one row per probe).
-    [[nodiscard]] static std::string report_csv(const ProfileSnapshot& snap);
+    [[nodiscard]] static std::string report_csv(const SlamProfileSnapshot& snap);
 
     /// Generate a human-readable text report.
-    [[nodiscard]] static std::string report_text(const ProfileSnapshot& snap);
+    [[nodiscard]] static std::string report_text(const SlamProfileSnapshot& snap);
 
     // ── Reset ───────────────────────────────────────────────────────────
 

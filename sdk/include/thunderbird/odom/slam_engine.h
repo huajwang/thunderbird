@@ -414,6 +414,13 @@ public:
     /// Cumulative pipeline statistics.
     [[nodiscard]] OdometryStats stats() const noexcept;
 
+    /// Runtime profiling snapshot — module-level CPU breakdown, latency
+    /// percentiles, memory, and worker thread utilisation.
+    ///
+    /// Safe to call from any thread while the engine is running.
+    /// Returns a copy of the profiler state at the time of the call.
+    [[nodiscard]] ProfileSnapshot profileSnapshot() const;
+
     /// Number of IMU samples dropped due to ring buffer overflow.
     [[nodiscard]] size_t imuDropCount() const noexcept;
 

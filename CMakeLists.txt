@@ -33,6 +33,7 @@ option(THUNDERBIRD_BUILD_TESTS     "Build unit tests"                   ON)
 option(THUNDERBIRD_BUILD_PYTHON    "Build Python bindings (pybind11)"   OFF)
 option(THUNDERBIRD_BUILD_ROS2      "Build ROS 2 bridge package"         OFF)
 option(THUNDERBIRD_BUILD_SLAMD     "Build SLAM daemon (acme_slamd)"     OFF)
+option(THUNDERBIRD_BUILD_EVAL      "Build SLAM evaluation framework"    OFF)
 option(THUNDERBIRD_USE_SIMULATED   "Use simulated sensor backends"      ON)
 
 # ── Compiler warnings ───────────────────────────────────────────────────────
@@ -66,6 +67,11 @@ endif()
 # ── SLAM daemon ─────────────────────────────────────────────────────────────
 if(THUNDERBIRD_BUILD_SLAMD)
     add_subdirectory(slamd)
+endif()
+
+# ── SLAM evaluation framework ──────────────────────────────────────────────
+if(THUNDERBIRD_BUILD_EVAL)
+    add_subdirectory(eval)
 endif()
 
 # ── Tests ────────────────────────────────────────────────────────────────────
