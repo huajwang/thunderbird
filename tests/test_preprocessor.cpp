@@ -169,7 +169,7 @@ static void test_roi_z_crop() {
     assert(result.raw_point_count == 3);
     // Only 1 point should survive z-cropping
     assert(result.filtered_cloud != nullptr);
-    assert(result.filtered_cloud->points.size() <= 1);
+    assert(result.filtered_cloud->points.size() == 1);
     std::puts("  [PASS] roi_z_crop");
 }
 
