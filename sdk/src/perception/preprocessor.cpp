@@ -40,10 +40,20 @@ struct VoxelKey {
 struct VoxelKeyHash {
     size_t operator()(const VoxelKey& k) const noexcept {
         // Fast spatial hash — good distribution for uniform grids.
-        auto h = static_cast<size_t>(k.x * 73856093);
-        h ^= static_cast<size_t>(k.y * 19349663);
-        h ^= static_cast<size_t>(k.z * 83492791);
-        return h;
+        // Do arithmetic in 64-bit unsigned to avoid signed overflow UB.
+        constexpr std::uint64_t p1 = 73856093ull;
+        constexpr std::uint64_t p2 = 19349663ull;
+        constexpr std::uint64_t p3 = 83492791ull;
+
+        const std::uint64_t hx =
+            static_cast<std::uint64_t>(static_cast<std::int64_t>(k.x)) * p1;
+        const std::uint64_t hy =
+            static_cast<std::uint64_t>(static_cast<std::int64_t>(k.y)) * p2;
+        const std::uint64_t hz =
+            static_cast<std::uint64_t>(static_cast<std::int64_t>(k.z)) * p3;
+
+        const std::uint64_t h = hx ^ hy ^ hz;
+        return static_cast<size_t>(h);
     }
 };
 

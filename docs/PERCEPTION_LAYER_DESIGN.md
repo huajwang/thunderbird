@@ -98,7 +98,7 @@
  │  └──────────┬───────────────────────────────────────────────────────────┘   │
  │             │                                                               │
  │             ▼                                                               │
- │  User thread:  getTrackedObjects() / onTrackedObjects(callback)            │
+ │  User thread:  getDetectedObjects() / onTrackedObjects(callback)           │
  │                                                                             │
  └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -129,7 +129,7 @@ pattern as `AcmeSlamEngine` — no heavy headers leak into user code.
 **Responsibilities:**
 - Accept `SlamOutput` from the SLAM pipeline (callback or ring tap)
 - Spawn T1/T2/T3 threads on `start()`
-- Expose pull API (`getTrackedObjects()`) and callback API (`onTrackedObjects()`)
+- Expose pull API (`getDetectedObjects()`) and callback API (`onTrackedObjects()`)
 - Lifecycle: `initialize()` → `start()` → `stop()` → `shutdown()`
 - Profile-aware: loads drone or car config to select detector backend + parameters
 
@@ -187,7 +187,7 @@ Maintains persistent track state across frames.
 | Component | Description |
 |-----------|-------------|
 | Association | Hungarian algorithm on cost matrix (IoU-3D + center distance) |
-| State filter | Per-track EKF: state = [x, y, z, θ, vx, vy, vz, ω] |
+| State filter | Per-track EKF: state = [x, y, z, θ, vx, vy, vz] (yaw_rate ω derived from θ, not part of state) |
 | Motion model | Constant velocity (drone) / CTRV (car) — profile-selected |
 | Track lifecycle | `Tentative(N=2)` → `Confirmed(N=3)` → `Coasting(miss≤5)` → `Deleted` |
 | ID assignment | Monotonic uint64 track IDs, never reused within a session |
@@ -361,7 +361,7 @@ public:
     void feedSlamOutput(std::shared_ptr<const odom::SlamOutput> output);
 
     // ── Pull API (user thread, non-blocking) ────────────────────────────
-    bool getTrackedObjects(std::shared_ptr<const TrackedObjectList>& out);
+    bool getDetectedObjects(std::shared_ptr<const TrackedObjectList>& out);
     bool getLatestDetections(std::shared_ptr<const DetectionFrame>& out);
 
     // ── Callback API ────────────────────────────────────────────────────

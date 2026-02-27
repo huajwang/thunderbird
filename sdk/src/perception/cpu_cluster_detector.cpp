@@ -144,7 +144,7 @@ private:
         double yaw;                // heading from PCA
         double density;            // points / volume
         double elongation;         // length / width
-        double planarity;          // (λ2 - λ3) / λ1
+        double planarity;          // 2D PCA anisotropy in XY: (λ1 - λ2) / λ1
         uint32_t num_points;
     };
 

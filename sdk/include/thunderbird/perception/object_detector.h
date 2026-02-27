@@ -84,8 +84,13 @@ public:
     /// @return true on success.
     virtual bool initialize(const PerceptionConfig& config) = 0;
 
-    /// Release all resources (GPU memory, model handles, etc.).
-    /// Called automatically by the destructor.
+    /// Release all resources acquired in initialize() (GPU memory, model
+    /// handles, workspace buffers, etc.).
+    ///
+    /// NOTE: The base ObjectDetector destructor does NOT call teardown().
+    /// It is the responsibility of the owning component (e.g., PerceptionEngine)
+    /// or derived class destructors to ensure teardown() is invoked before
+    /// the detector is destroyed.
     virtual void teardown() = 0;
 
     // ── Inference ───────────────────────────────────────────────────────

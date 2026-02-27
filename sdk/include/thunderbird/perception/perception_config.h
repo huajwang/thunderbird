@@ -97,6 +97,8 @@ struct DetectorConfig {
 enum class MotionModel : uint8_t {
     ConstantVelocity = 0,   ///< linear CV model (drone default)
     CTRV             = 1,   ///< constant turn-rate and velocity (car default)
+                            ///< **NOT YET IMPLEMENTED** — currently falls back
+                            ///< to ConstantVelocity.  Reserved for future use.
 };
 
 /// Association metric for detection → track matching.

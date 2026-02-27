@@ -25,8 +25,11 @@ option(THUNDERBIRD_ENABLE_GPU_PERCEPTION
     "Build GPU-accelerated 3D detector backends (requires CUDA + TensorRT)" OFF)
 
 if(THUNDERBIRD_ENABLE_GPU_PERCEPTION)
-    find_package(CUDAToolkit REQUIRED)
+    # Require a minimum CUDA toolkit version to avoid known-incompatible releases.
+    find_package(CUDAToolkit 11.4 REQUIRED)
+
     # TensorRT doesn't ship a CMake config — locate manually.
+    # Set TENSORRT_ROOT to the TensorRT installation prefix if not in standard paths.
     find_path(TENSORRT_INCLUDE_DIR NvInfer.h
         HINTS /usr/include /usr/local/include ${TENSORRT_ROOT}/include)
     find_library(TENSORRT_LIB nvinfer
@@ -34,7 +37,17 @@ if(THUNDERBIRD_ENABLE_GPU_PERCEPTION)
 
     if(NOT TENSORRT_INCLUDE_DIR OR NOT TENSORRT_LIB)
         message(FATAL_ERROR "THUNDERBIRD_ENABLE_GPU_PERCEPTION is ON but TensorRT not found. "
-                            "Set TENSORRT_ROOT or install TensorRT.")
+                            "Set TENSORRT_ROOT to the TensorRT installation prefix, or install TensorRT.")
+    endif()
+
+    # Verify TensorRT version is at least 8.x (required for EfficientNMS plugin).
+    if(EXISTS "${TENSORRT_INCLUDE_DIR}/NvInferVersion.h")
+        file(STRINGS "${TENSORRT_INCLUDE_DIR}/NvInferVersion.h" _trt_ver
+             REGEX "#define NV_TENSORRT_MAJOR")
+        string(REGEX MATCH "[0-9]+" _trt_major "${_trt_ver}")
+        if(_trt_major AND _trt_major LESS 8)
+            message(FATAL_ERROR "TensorRT >= 8 is required (found major version ${_trt_major}).")
+        endif()
     endif()
 
     target_compile_definitions(thunderbird_sdk_objects PUBLIC THUNDERBIRD_HAS_GPU_PERCEPTION=1)

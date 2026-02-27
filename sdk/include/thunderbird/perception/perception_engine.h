@@ -207,7 +207,12 @@ public:
         const char* detector_backend{""};///< active detector name
     };
 
-    /// Query current stats (thread-safe snapshot).
+    /// Query current pipeline statistics.
+    ///
+    /// Counter fields (frames_received, frames_processed, etc.) are atomic.
+    /// Timing averages (avg_*_ms) are read from unsynchronised EMA accumulators
+    /// and may be slightly stale or inconsistent — this is acceptable for
+    /// diagnostics and avoids contention on the hot processing path.
     [[nodiscard]] Stats stats() const noexcept;
 
     /// Number of frames dropped at perception ingress ring.

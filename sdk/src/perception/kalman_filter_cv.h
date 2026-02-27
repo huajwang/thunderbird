@@ -30,8 +30,11 @@
 #include <cmath>
 #include <cstring>
 #include <array>
+#include <utility>
 
 namespace thunderbird::perception::detail {
+
+static constexpr double kPi = 3.14159265358979323846;
 
 static constexpr int KF_STATE_DIM = 7;   // px, py, pz, yaw, vx, vy, vz
 static constexpr int KF_MEAS_DIM  = 4;   // px, py, pz, yaw
@@ -240,14 +243,14 @@ public:
         }
 
         // Normalise yaw innovation to [-π, π].
-        while (y[3] >  M_PI) y[3] -= 2.0 * M_PI;
-        while (y[3] < -M_PI) y[3] += 2.0 * M_PI;
+        while (y[3] >  kPi) y[3] -= 2.0 * kPi;
+        while (y[3] < -kPi) y[3] += 2.0 * kPi;
 
         // Innovation covariance: S = H·P·Hᵀ + R  (M × M)
         double HT[N * M], HP[M * N], S[M * M];
         linalg::mat_transpose(H, HT, M, N);
         linalg::mat_mul(H, P_, HP, M, N, N);
-        linalg::mat_mul(HP, HT, S, M, M, M);
+        linalg::mat_mul(HP, HT, S, M, N, M);
         linalg::mat_add(S, R, S, M);
 
         // Kalman gain: K = P·Hᵀ·S⁻¹  (N × M)
@@ -270,8 +273,8 @@ public:
         }
 
         // Normalise yaw state.
-        while (x_[3] >  M_PI) x_[3] -= 2.0 * M_PI;
-        while (x_[3] < -M_PI) x_[3] += 2.0 * M_PI;
+        while (x_[3] >  kPi) x_[3] -= 2.0 * kPi;
+        while (x_[3] < -kPi) x_[3] += 2.0 * kPi;
 
         // Covariance update: P = (I − K·H)·P
         // Use Joseph form for numerical stability:
@@ -308,8 +311,8 @@ public:
         y[1] = z[1] - x_[1];
         y[2] = z[2] - x_[2];
         y[3] = z[3] - x_[3];
-        while (y[3] >  M_PI) y[3] -= 2.0 * M_PI;
-        while (y[3] < -M_PI) y[3] += 2.0 * M_PI;
+        while (y[3] >  kPi) y[3] -= 2.0 * kPi;
+        while (y[3] < -kPi) y[3] += 2.0 * kPi;
 
         // S = H·P·Hᵀ + R — for this simple H, S = P[0:4, 0:4] + R.
         double S[M * M];

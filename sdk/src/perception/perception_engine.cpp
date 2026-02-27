@@ -212,10 +212,16 @@ struct PerceptionEngine::Impl {
             if (config.pipeline.publish_intermediate_detections) {
                 detection_output_ring.push(frame_ptr);
 
-                // Fire detection callback.
-                std::lock_guard<std::mutex> lk(cb_mu);
-                if (on_detection_cb) {
-                    on_detection_cb(frame_ptr);
+                // Fire detection callback.  Copy under the lock,
+                // then invoke outside to avoid stalling T2 if the
+                // user callback is slow or re-registers callbacks.
+                DetectionCallback det_cb;
+                {
+                    std::lock_guard<std::mutex> lk(cb_mu);
+                    det_cb = on_detection_cb;
+                }
+                if (det_cb) {
+                    det_cb(frame_ptr);
                 }
             }
 
@@ -259,12 +265,16 @@ struct PerceptionEngine::Impl {
 
             output_ring.push(list_ptr);
 
-            // Fire tracked-object callback.
+            // Fire tracked-object callback.  Copy under the lock,
+            // then invoke outside to avoid stalling T3 if the
+            // user callback is slow or re-registers callbacks.
+            TrackedObjectCallback trk_cb;
             {
                 std::lock_guard<std::mutex> lk(cb_mu);
-                if (on_tracked_cb) {
-                    on_tracked_cb(list_ptr);
-                }
+                trk_cb = on_tracked_cb;
+            }
+            if (trk_cb) {
+                trk_cb(list_ptr);
             }
         }
     }
@@ -408,6 +418,8 @@ PerceptionEngine::Stats PerceptionEngine::stats() const noexcept {
     s.frames_received  = impl_->stat_frames_received.load(std::memory_order_relaxed);
     s.frames_processed = impl_->stat_frames_processed.load(std::memory_order_relaxed);
     s.frames_dropped   = impl_->perception_ring.dropped();
+    // NOTE: EMA reads are unsynchronised with worker-thread updates.
+    // Values may be slightly stale — acceptable for diagnostic purposes.
     s.avg_preprocess_ms = impl_->ema_preprocess.get();
     s.avg_detection_ms  = impl_->ema_detection.get();
     s.avg_tracking_ms   = impl_->ema_tracking.get();
