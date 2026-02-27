@@ -207,7 +207,7 @@ public:
         linalg::mat_add(FPFt, Q, P_, N);
     }
 
-    /// Update with measurement z = [px, py, pz, yaw].
+    void update(const double* z, double r_pos, double r_yaw) {
     void update(const double z[4], double r_pos, double r_yaw) {
         // Measurement matrix H (M × N), selecting position and yaw from state:
         //   | 1 0 0 0 0 0 0 |
