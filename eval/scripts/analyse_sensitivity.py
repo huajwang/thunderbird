@@ -141,7 +141,7 @@ def analyse(csv_path, output_dir):
 
         values = grouped[param]
         # Sort by numeric value
-        sorted_vals = sorted(values.keys(), key=lambda x: float(x))
+        sorted_vals = sorted(values.keys(), key=float)
 
         # Table header: one column per preset + composite scores
         lines.append(f"| Value | " + " | ".join(f"ATE ({p})" for p in ALL_PRESETS) +
