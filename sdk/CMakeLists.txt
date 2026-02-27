@@ -20,6 +20,34 @@ if(THUNDERBIRD_USE_SIMULATED)
     target_compile_definitions(thunderbird_sdk_objects PUBLIC THUNDERBIRD_SIMULATED=1)
 endif()
 
+# ── Optional GPU perception (PointPillars / CenterPoint via TensorRT) ────────
+option(THUNDERBIRD_ENABLE_GPU_PERCEPTION
+    "Build GPU-accelerated 3D detector backends (requires CUDA + TensorRT)" OFF)
+
+if(THUNDERBIRD_ENABLE_GPU_PERCEPTION)
+    find_package(CUDAToolkit REQUIRED)
+    # TensorRT doesn't ship a CMake config — locate manually.
+    find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+        HINTS /usr/include /usr/local/include ${TENSORRT_ROOT}/include)
+    find_library(TENSORRT_LIB nvinfer
+        HINTS /usr/lib /usr/local/lib ${TENSORRT_ROOT}/lib)
+
+    if(NOT TENSORRT_INCLUDE_DIR OR NOT TENSORRT_LIB)
+        message(FATAL_ERROR "THUNDERBIRD_ENABLE_GPU_PERCEPTION is ON but TensorRT not found. "
+                            "Set TENSORRT_ROOT or install TensorRT.")
+    endif()
+
+    target_compile_definitions(thunderbird_sdk_objects PUBLIC THUNDERBIRD_HAS_GPU_PERCEPTION=1)
+    target_include_directories(thunderbird_sdk_objects PRIVATE ${TENSORRT_INCLUDE_DIR})
+    target_link_libraries(thunderbird_sdk_objects PRIVATE
+        ${TENSORRT_LIB}
+        CUDA::cudart
+    )
+    message(STATUS "Thunderbird: GPU perception ENABLED (TensorRT at ${TENSORRT_INCLUDE_DIR})")
+else()
+    message(STATUS "Thunderbird: GPU perception DISABLED (CpuClusterDetector only)")
+endif()
+
 # --- Static library ----------------------------------------------------------
 add_library(thunderbird_sdk STATIC $<TARGET_OBJECTS:thunderbird_sdk_objects>)
 target_include_directories(thunderbird_sdk
