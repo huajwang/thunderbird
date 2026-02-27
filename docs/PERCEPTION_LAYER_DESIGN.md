@@ -1,10 +1,10 @@
 # Thunderbird SDK — 3D Perception Layer Design
 
-> **Status:** Design proposal — not yet implemented  
+> **Status:** Implemented design (Thunderbird SDK perception layer)  
 > **Author:** Perception Architecture Team  
 > **Date:** 2026-02-27  
-> **Depends on:** `AcmeSlamEngine`, `RingBuffer<T,N>`, `slam_types.h`, drone/car YAML profiles
-
+> **Depends on:** `AcmeSlamEngine`, `RingBuffer<T,N>`, `slam_types.h`, drone/car YAML profiles  
+> **Implementation scope:** CPU perception pipeline is fully implemented; GPU backends are currently stubbed and planned for a future phase.
 ---
 
 ## 1. Architecture Diagram
