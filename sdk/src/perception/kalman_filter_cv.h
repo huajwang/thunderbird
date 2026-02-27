@@ -29,6 +29,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <array>
 
 namespace thunderbird::perception::detail {
 
@@ -298,7 +299,7 @@ public:
     }
 
     /// Compute Mahalanobis distance between current state and measurement z.
-    [[nodiscard]] double mahalanobis(const double z[4],
+    [[nodiscard]] double mahalanobis(const std::array<double, M>& z,
                                      double r_pos, double r_yaw) const {
         // Innovation: y = z − H·x  (H extracts first 4 state elements).
         double y[M];
