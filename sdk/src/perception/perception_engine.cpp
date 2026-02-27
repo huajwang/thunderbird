@@ -337,6 +337,8 @@ void PerceptionEngine::stop() {
     if (impl_->t2_detector.joinable())     impl_->t2_detector.join();
     if (impl_->t3_tracker.joinable())      impl_->t3_tracker.join();
 
+    // Reset per-run rate limiting state so a subsequent start() begins cleanly.
+    impl_->last_processed_ts_ns.store(0, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
