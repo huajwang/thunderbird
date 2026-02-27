@@ -270,9 +270,10 @@ struct PointCloudPreprocessor::Impl {
                 frontier.pop();
                 ++cluster_size;
 
-                // Once oversized, keep draining the frontier (so every
-                // connected point stays labeled) but stop expanding to
-                // new neighbors.  The cluster will be rejected below.
+                // Once oversized, keep draining the existing frontier (so
+                // already-enqueued points keep their temporary labels) but
+                // stop expanding to new neighbors. The cluster will be
+                // rejected and relabeled to 0 below.
                 if (cluster_size > config.cluster_max_points) continue;
 
                 const auto& p = non_ground[idx];
