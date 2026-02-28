@@ -20,6 +20,47 @@ if(THUNDERBIRD_USE_SIMULATED)
     target_compile_definitions(thunderbird_sdk_objects PUBLIC THUNDERBIRD_SIMULATED=1)
 endif()
 
+# ── Optional GPU perception (PointPillars / CenterPoint via TensorRT) ────────
+option(THUNDERBIRD_ENABLE_GPU_PERCEPTION
+    "Build GPU-accelerated 3D detector backends (requires CUDA + TensorRT)" OFF)
+
+if(THUNDERBIRD_ENABLE_GPU_PERCEPTION)
+    # Require a minimum CUDA toolkit version to avoid known-incompatible releases.
+    find_package(CUDAToolkit 11.4 REQUIRED)
+
+    # TensorRT doesn't ship a CMake config — locate manually.
+    # Set TENSORRT_ROOT to the TensorRT installation prefix if not in standard paths.
+    find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+        HINTS /usr/include /usr/local/include ${TENSORRT_ROOT}/include)
+    find_library(TENSORRT_LIB nvinfer
+        HINTS /usr/lib /usr/local/lib ${TENSORRT_ROOT}/lib)
+
+    if(NOT TENSORRT_INCLUDE_DIR OR NOT TENSORRT_LIB)
+        message(FATAL_ERROR "THUNDERBIRD_ENABLE_GPU_PERCEPTION is ON but TensorRT not found. "
+                            "Set TENSORRT_ROOT to the TensorRT installation prefix, or install TensorRT.")
+    endif()
+
+    # Verify TensorRT version is at least 8.x (required for EfficientNMS plugin).
+    if(EXISTS "${TENSORRT_INCLUDE_DIR}/NvInferVersion.h")
+        file(STRINGS "${TENSORRT_INCLUDE_DIR}/NvInferVersion.h" _trt_ver
+             REGEX "#define NV_TENSORRT_MAJOR")
+        string(REGEX MATCH "[0-9]+" _trt_major "${_trt_ver}")
+        if(_trt_major AND _trt_major LESS 8)
+            message(FATAL_ERROR "TensorRT >= 8 is required (found major version ${_trt_major}).")
+        endif()
+    endif()
+
+    target_compile_definitions(thunderbird_sdk_objects PUBLIC THUNDERBIRD_HAS_GPU_PERCEPTION=1)
+    target_include_directories(thunderbird_sdk_objects PRIVATE ${TENSORRT_INCLUDE_DIR})
+    target_link_libraries(thunderbird_sdk_objects PRIVATE
+        ${TENSORRT_LIB}
+        CUDA::cudart
+    )
+    message(STATUS "Thunderbird: GPU perception ENABLED (TensorRT at ${TENSORRT_INCLUDE_DIR})")
+else()
+    message(STATUS "Thunderbird: GPU perception DISABLED (CpuClusterDetector only)")
+endif()
+
 # --- Static library ----------------------------------------------------------
 add_library(thunderbird_sdk STATIC $<TARGET_OBJECTS:thunderbird_sdk_objects>)
 target_include_directories(thunderbird_sdk
