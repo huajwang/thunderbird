@@ -239,8 +239,16 @@ public:
     }
 
     /// Called by external code when a heartbeat reply is received.
-    void notify_heartbeat_received() {
+    /// @param rtt_us  Round-trip time in microseconds (0 if not measured).
+    void notify_heartbeat_received(int64_t rtt_us = 0) {
         missed_heartbeats_.store(0, std::memory_order_release);
+        if (rtt_us > 0)
+            last_heartbeat_rtt_us_.store(rtt_us, std::memory_order_release);
+    }
+
+    /// Latest heartbeat round-trip time (microseconds, 0 if unavailable).
+    int64_t last_heartbeat_rtt_us() const {
+        return last_heartbeat_rtt_us_.load(std::memory_order_acquire);
     }
 
     /// Retrieve device info obtained during handshake.
@@ -285,7 +293,8 @@ private:
 
             // Build and send heartbeat
             protocol::HeartbeatPayload hb{};
-            hb.sender_timestamp_ns = Timestamp::now().nanoseconds;
+            last_hb_send_ns_ = Timestamp::now().nanoseconds;
+            hb.sender_timestamp_ns = last_hb_send_ns_;
             hb.uptime_seconds      = 0;
             hb.error_flags         = 0;
 
@@ -320,6 +329,8 @@ private:
     // Heartbeat
     std::atomic<bool>            hb_running_{false};
     std::atomic<uint32_t>        missed_heartbeats_{0};
+    std::atomic<int64_t>         last_heartbeat_rtt_us_{0};
+    int64_t                      last_hb_send_ns_{0};
     std::thread                  hb_thread_;
 };
 

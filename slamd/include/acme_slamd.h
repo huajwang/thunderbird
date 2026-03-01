@@ -439,6 +439,12 @@ struct HealthStatus {
     bool     sensor_connected{false};
     bool     sensor_streaming{false};
 
+    // ── Device health (from DeviceHealthMonitor) ────────────────────────
+    double   device_health_score{1.0};  ///< aggregate device health [0, 1]
+    double   lidar_hz{0};               ///< measured LiDAR packet rate
+    double   imu_hz{0};                 ///< measured IMU packet rate
+    bool     device_degraded{false};    ///< true if DeviceHealthState == Degraded
+
     // ── Checkpoint ──────────────────────────────────────────────────────
     int64_t  last_checkpoint_ns{0};    ///< timestamp of last checkpoint
     bool     warm_started{false};      ///< true if restored from checkpoint

@@ -45,15 +45,15 @@ public:
     // ── Callback registration (must be done before connect) ─────────────────
 
     void set_lidar_callback(LidarCallback cb) {
-        conn_->parser().on_lidar(std::move(cb));
+        conn_->decoder().on_lidar(std::move(cb));
     }
 
     void set_imu_callback(ImuCallback cb) {
-        conn_->parser().on_imu(std::move(cb));
+        conn_->decoder().on_imu(std::move(cb));
     }
 
     void set_camera_callback(CameraCallback cb) {
-        conn_->parser().on_camera(std::move(cb));
+        conn_->decoder().on_camera(std::move(cb));
     }
 
     // ── Lifecycle ───────────────────────────────────────────────────────────

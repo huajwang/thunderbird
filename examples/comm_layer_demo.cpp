@@ -139,14 +139,14 @@ int main() {
     // ── 5. Register sensor data callbacks on the parser ─────────────────────
     std::atomic<int> imu_count{0}, lidar_count{0};
 
-    conn_mgr->parser().on_imu([&](std::shared_ptr<const ImuSample> s) {
+    conn_mgr->decoder().on_imu([&](std::shared_ptr<const ImuSample> s) {
         int n = ++imu_count;
         if (n <= 5 || n % 10 == 0)  // print first 5 + every 10th
             std::printf("  [IMU #%d] accel=(%.3f, %.3f, %.3f)  temp=%.1f°C\n",
                         n, s->accel[0], s->accel[1], s->accel[2], s->temperature);
     });
 
-    conn_mgr->parser().on_lidar([&](std::shared_ptr<const LidarFrame> f) {
+    conn_mgr->decoder().on_lidar([&](std::shared_ptr<const LidarFrame> f) {
         ++lidar_count;
         std::printf("  [LiDAR] seq=%u  points=%zu\n",
                     f->sequence_number, f->points.size());
@@ -178,12 +178,14 @@ int main() {
     // Let the I/O thread process remaining data.
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    // ── 8. Print parser stats ───────────────────────────────────────────────
-    auto stats = conn_mgr->parser_stats();
-    std::printf("\n── Parser stats ─────────────────────\n");
+    // ── 8. Print decoder stats ─────────────────────────────────────────────
+    auto stats = conn_mgr->decoder_stats();
+    std::printf("\n── Decoder stats ────────────────────\n");
     std::printf("  packets parsed : %llu\n", (unsigned long long)stats.packets_parsed);
-    std::printf("  CRC errors     : %llu\n", (unsigned long long)stats.crc_errors);
+    std::printf("  checksum errors: %llu\n", (unsigned long long)stats.checksum_errors);
     std::printf("  resync count   : %llu\n", (unsigned long long)stats.resync_count);
+    std::printf("  malformed      : %llu\n", (unsigned long long)stats.malformed_count);
+    std::printf("  packets dropped: %llu\n", (unsigned long long)stats.packets_dropped);
     std::printf("  bytes processed: %llu\n", (unsigned long long)stats.bytes_processed);
 
     // ── 9. Cleanup ──────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 // Thunderbird SDK — acme_slamd: SLAM Daemon Implementation
 // ─────────────────────────────────────────────────────────────────────────────
 #include "acme_slamd.h"
+#include "thunderbird/lidar_frame_assembler.h"
 
 #include <algorithm>
 #include <atomic>
@@ -615,6 +616,15 @@ struct SlamDaemon::Impl {
             if (device) {
                 hs.sensor_connected = device->is_connected();
                 hs.sensor_streaming = device->is_streaming();
+
+                // Populate structured device health from DeviceHealthMonitor.
+                if (auto* hm = device->health_monitor()) {
+                    auto dhs = hm->snapshot();
+                    hs.device_health_score = dhs.health_score;
+                    hs.lidar_hz            = dhs.lidar_hz;
+                    hs.imu_hz              = dhs.imu_hz;
+                    hs.device_degraded     = (dhs.state == DeviceHealthState::Degraded);
+                }
             }
 
             hs.warm_started = warm_started;
@@ -640,6 +650,13 @@ struct SlamDaemon::Impl {
                 log.log(LogLevel::Warning, "health",
                         "Clock drift: " +
                         std::to_string(hs.drift_ns_per_sec) + " ns/s");
+            }
+            if (hs.device_degraded) {
+                log.log(LogLevel::Warning, "health",
+                        "Device degraded: score=" +
+                        std::to_string(hs.device_health_score) +
+                        " lidar=" + std::to_string(hs.lidar_hz) + " Hz" +
+                        " imu=" + std::to_string(hs.imu_hz) + " Hz");
             }
 
             // Systemd watchdog.
@@ -784,16 +801,36 @@ bool SlamDaemon::start() {
         d.engine->feedImu(os, host_ns);
     });
 
+    // ── Wire LiDAR frame assembler for full-sweep point clouds ────────
+    // Instead of feeding per-packet LidarFrames (50-200 pts) directly to
+    // SLAM, accumulate them into full 360° sweeps (~28K pts) via the
+    // DeviceManager's frame assembler.
+    d.device->frame_assembler().on_frame(
+        [&d](std::shared_ptr<const odom::PointCloudFrame> cloud,
+             const FrameAssemblyMeta& /*meta*/) {
+            auto host_ns = duration_cast<nanoseconds>(
+                clock_t::now().time_since_epoch()).count();
+            d.engine->feedPointCloud(std::move(cloud), host_ns);
+        });
+
     d.device->on_lidar([&d](std::shared_ptr<const LidarFrame> f) {
-        auto cloud = std::make_shared<odom::PointCloudFrame>();
-        cloud->timestamp_ns = f->timestamp.nanoseconds;
-        cloud->points.reserve(f->points.size());
-        for (const auto& p : f->points) {
-            cloud->points.push_back({p.x, p.y, p.z, p.intensity, 0});
+        // Feed per-packet data into the frame assembler.
+        //
+        // TODO(#perf): azimuth estimated from first/last point geometry.
+        // This is fragile when points are sparse or not monotonic in
+        // azimuth.  A more robust approach is to propagate azimuth_start/
+        // azimuth_end from the native wire LidarSubHeader through the
+        // decoder, avoiding per-packet atan2 and false wrap detection.
+        float az_start = 0.0f, az_end = 0.0f;
+        if (f->points.size() >= 2) {
+            az_start = std::atan2(f->points.front().y,
+                                  f->points.front().x) * 180.0f / 3.14159265f;
+            az_end   = std::atan2(f->points.back().y,
+                                  f->points.back().x) * 180.0f / 3.14159265f;
+            if (az_start < 0) az_start += 360.0f;
+            if (az_end < 0)   az_end += 360.0f;
         }
-        auto host_ns = duration_cast<nanoseconds>(
-            clock_t::now().time_since_epoch()).count();
-        d.engine->feedPointCloud(std::move(cloud), host_ns);
+        d.device->frame_assembler().feed(f, az_start, az_end);
     });
 
     // ── 4. Wire engine callbacks → IPC ──────────────────────────────────

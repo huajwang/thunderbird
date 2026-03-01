@@ -23,6 +23,7 @@
 #pragma once
 
 #include "thunderbird/connection.h"
+#include "thunderbird/packet_decoder.h"
 #include "thunderbird/packet_parser.h"
 #include "thunderbird/transport.h"
 #include "thunderbird/types.h"
@@ -60,6 +61,11 @@ struct RetryConfig {
     /// Jitter factor [0, 1].  Adds up to this fraction of the computed delay
     /// as random noise to prevent synchronised retry storms.
     double   jitter_factor            = 0.25;
+
+    /// When true, skip the handshake/heartbeat state machine and stream raw
+    /// UDP datagrams directly into the decoder.  Used for third-party devices
+    /// (e.g. Velodyne) that have no Thunderbird control protocol.
+    bool     raw_streaming_mode       = false;
 };
 
 // ─── Event types exposed to the user ────────────────────────────────────────
@@ -96,6 +102,7 @@ using ConnectionEventCallback =
 
 class ConnectionManager {
 public:
+    /// Construct with an existing transport and default PacketParser decoder.
     explicit ConnectionManager(std::unique_ptr<ITransport> transport,
                                ConnectionConfig conn_cfg = {},
                                RetryConfig      retry_cfg = {})
@@ -103,8 +110,26 @@ public:
         , conn_cfg_(std::move(conn_cfg))
         , retry_cfg_(std::move(retry_cfg))
         , state_machine_(conn_cfg_)
+        , decoder_(std::make_unique<PacketParser>())
     {
-        // Forward state-machine transitions into our reconnect logic.
+        state_machine_.on_state_change(
+            [this](ConnectionState old_s, ConnectionState new_s,
+                   const std::string& msg) {
+                handle_state_change(old_s, new_s, msg);
+            });
+    }
+
+    /// Construct with a custom decoder (e.g. VelodyneVlp16Decoder).
+    ConnectionManager(std::unique_ptr<ITransport>      transport,
+                      std::unique_ptr<IPacketDecoder>  decoder,
+                      ConnectionConfig conn_cfg = {},
+                      RetryConfig      retry_cfg = {})
+        : transport_(std::move(transport))
+        , conn_cfg_(std::move(conn_cfg))
+        , retry_cfg_(std::move(retry_cfg))
+        , state_machine_(conn_cfg_)
+        , decoder_(std::move(decoder))
+    {
         state_machine_.on_state_change(
             [this](ConnectionState old_s, ConnectionState new_s,
                    const std::string& msg) {
@@ -125,8 +150,15 @@ public:
         event_cb_ = std::move(cb);
     }
 
-    /// Access the parser to register sensor callbacks.
-    PacketParser& parser() { return parser_; }
+    /// Access the decoder to register sensor callbacks.
+    IPacketDecoder& decoder() { return *decoder_; }
+
+    /// Legacy accessor — returns the decoder cast to PacketParser, or nullptr
+    /// when the underlying decoder is not a PacketParser (e.g. third-party).
+    /// Prefer decoder() for new code.
+    PacketParser* parser() noexcept {
+        return dynamic_cast<PacketParser*>(decoder_.get());
+    }
 
     // ── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -166,7 +198,7 @@ public:
 
     DeviceInfo device_info() const { return state_machine_.device_info(); }
 
-    const ParserStats& parser_stats() const { return parser_.stats(); }
+    DecoderStats decoder_stats() const { return decoder_->stats(); }
 
 private:
     // ── Connect with exponential backoff ────────────────────────────────────
@@ -242,9 +274,14 @@ private:
                 continue;
             }
 
-            size_t n = transport_->read(buf.get(), kBufSize, /*timeout_ms=*/100);
-            if (n > 0) {
-                parser_.feed(buf.get(), n);
+            auto result = transport_->read_timestamped(
+                buf.get(), kBufSize, /*timeout_ms=*/100);
+
+            if (result.bytes_read > 0) {
+                // Always propagate the RX timestamp (0 = no kernel ts,
+                // decoder falls back to Timestamp::now()).
+                decoder_->set_rx_timestamp(result.rx_timestamp_ns);
+                decoder_->feed(buf.get(), result.bytes_read);
             }
         }
     }
@@ -278,7 +315,7 @@ private:
 
             // Close stale transport and retry.
             transport_->close();
-            parser_.reset();
+            decoder_->reset();
 
             emit(ConnectionEvent::Reconnecting,
                  "Reconnect attempt " + std::to_string(attempt));
@@ -319,12 +356,12 @@ private:
 
     // ── Members ─────────────────────────────────────────────────────────────
 
-    std::unique_ptr<ITransport>  transport_;
-    ConnectionConfig             conn_cfg_;
-    RetryConfig                  retry_cfg_;
-    ConnectionStateMachine       state_machine_;
-    PacketParser                 parser_;
-    std::string                  uri_;
+    std::unique_ptr<ITransport>      transport_;
+    ConnectionConfig                 conn_cfg_;
+    RetryConfig                      retry_cfg_;
+    ConnectionStateMachine           state_machine_;
+    std::unique_ptr<IPacketDecoder>  decoder_;
+    std::string                      uri_;
 
     std::mutex                   mu_;
     ConnectionEventCallback      event_cb_;

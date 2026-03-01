@@ -51,6 +51,9 @@
     #include <fcntl.h>
     #include <poll.h>
     #include <cerrno>
+    #ifdef __linux__
+    #include <linux/net_tstamp.h>  // SOF_TIMESTAMPING_*
+    #endif
     using socket_t = int;
     inline constexpr socket_t kInvalidSock = -1;
     inline int sock_errno() { return errno; }
@@ -137,6 +140,26 @@ public:
         device_addr_ = addr;
         device_addr_.sin_port = htons(data_port);
 
+        // ── Enable kernel RX timestamping on UDP (Linux only) ───────────
+        //
+        // Note: SOF_TIMESTAMPING_SOFTWARE returns CLOCK_REALTIME-domain
+        // timestamps.  The SDK normalises them into Timestamp{ns} and the
+        // clock service's OLS regression absorbs any domain offset when
+        // correlating HW ↔ host clocks.  If a future kernel supports
+        // CLOCK_MONOTONIC software timestamps, prefer those.
+#ifdef __linux__
+        int ts_flags = SOF_TIMESTAMPING_RX_SOFTWARE
+                     | SOF_TIMESTAMPING_SOFTWARE;
+        // Attempt hardware timestamps if available (silently ignored if unsupported).
+        // ts_flags |= SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RAW_HARDWARE;
+        if (setsockopt(udp_sock_, SOL_SOCKET, SO_TIMESTAMPING,
+                       &ts_flags, sizeof(ts_flags)) != 0) {
+            // Timestamping unavailable — read_timestamped() will return
+            // rx_timestamp_ns == 0 and callers fall back to host clock.
+            timestamping_enabled_ = false;
+        }
+#endif
+
         open_ = true;
         return Status::OK;
     }
@@ -203,6 +226,77 @@ public:
         return 0;
     }
 
+    /// Read with kernel/NIC RX timestamp.  On Linux, uses recvmsg() to
+    /// extract SO_TIMESTAMPING ancillary data.  Falls back to plain read()
+    /// on Windows and other platforms.
+    ReadResult read_timestamped(uint8_t* buf, size_t max_bytes,
+                                uint32_t timeout_ms) override {
+        if (!open_) return {};
+
+#ifdef __linux__
+        // poll() as in read().
+        pollfd pfds[2];
+        pfds[0].fd     = udp_sock_;
+        pfds[0].events = POLLIN;
+        pfds[1].fd     = tcp_sock_;
+        pfds[1].events = POLLIN;
+
+        int ready = ::poll(pfds, 2, static_cast<int>(timeout_ms));
+        if (ready <= 0) return {};
+
+        ReadResult result;
+
+        if (pfds[0].revents & POLLIN) {
+            // ── recvmsg() on the UDP socket for ancillary data ──────────
+            struct msghdr msg{};
+            struct iovec  iov;
+            iov.iov_base = buf;
+            iov.iov_len  = max_bytes;
+            msg.msg_iov    = &iov;
+            msg.msg_iovlen = 1;
+
+            alignas(struct cmsghdr) char ctrl[256];
+            msg.msg_control    = ctrl;
+            msg.msg_controllen = sizeof(ctrl);
+
+            ssize_t n = ::recvmsg(udp_sock_, &msg, 0);
+            if (n > 0) {
+                result.bytes_read = static_cast<size_t>(n);
+
+                // Extract kernel RX timestamp from cmsg.
+                for (struct cmsghdr* cm = CMSG_FIRSTHDR(&msg); cm;
+                     cm = CMSG_NXTHDR(&msg, cm)) {
+                    if (cm->cmsg_level == SOL_SOCKET &&
+                        cm->cmsg_type  == SO_TIMESTAMPING) {
+                        // Array of 3 timespecs: [software, deprecated, hardware]
+                        auto* ts = reinterpret_cast<const struct timespec*>(
+                            CMSG_DATA(cm));
+                        const struct timespec& chosen =
+                            (ts[2].tv_sec || ts[2].tv_nsec) ? ts[2] : ts[0];
+                        result.rx_timestamp_ns =
+                            chosen.tv_sec * 1'000'000'000LL + chosen.tv_nsec;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // TCP fallback (control channel — no timestamp needed).
+        if (result.bytes_read == 0 && (pfds[1].revents & POLLIN)) {
+            auto n = ::recv(tcp_sock_, reinterpret_cast<char*>(buf),
+                            static_cast<int>(max_bytes), 0);
+            if (n > 0) result.bytes_read = static_cast<size_t>(n);
+        }
+
+        return result;
+#else
+        // Windows / other: delegate to read(), no kernel timestamp.
+        ReadResult r;
+        r.bytes_read = read(buf, max_bytes, timeout_ms);
+        return r;
+#endif
+    }
+
     /// Write: always goes to the TCP control channel.
     size_t write(const uint8_t* buf, size_t len) override {
         if (!open_ || tcp_sock_ == kInvalidSock) return 0;
@@ -233,6 +327,7 @@ private:
     socket_t        udp_sock_{kInvalidSock};
     sockaddr_in     device_addr_{};
     bool            open_{false};
+    bool            timestamping_enabled_{true};
 };
 
 } // namespace thunderbird
