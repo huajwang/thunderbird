@@ -85,14 +85,18 @@ public:
     virtual const char* decoder_name() const = 0;
 
 protected:
-    /// Returns the best available host timestamp.
-    /// If SO_TIMESTAMPING injected a kernel RX timestamp, use it.
-    /// Otherwise falls back to steady_clock::now().
+    /// Returns a host timestamp in the SDK's steady_clock domain.
+    /// Note: Kernel RX timestamps (e.g., from SO_TIMESTAMPING) are stored
+    /// internally but are not exposed via Timestamp to avoid mixing time
+    /// domains (CLOCK_REALTIME vs steady_clock).
     Timestamp host_timestamp() const {
-        if (rx_timestamp_ns_ != 0)
-            return Timestamp{rx_timestamp_ns_};
         return Timestamp::now();
     }
+
+    /// Returns the raw kernel RX timestamp (CLOCK_REALTIME nanoseconds),
+    /// or 0 if unavailable.  Used by the clock service for HW↔host
+    /// correlation — not for general host_timestamp use.
+    int64_t rx_timestamp_ns() const { return rx_timestamp_ns_; }
 
     LidarCallback  lidar_cb_;
     ImuCallback    imu_cb_;
