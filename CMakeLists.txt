@@ -63,6 +63,9 @@ if(NOT spdlog_FOUND)
     set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
     set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
+    # spdlog static lib must be compiled with -fPIC so it can be linked
+    # into our shared library (libthunderbird_sdk.so).
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(spdlog)
 else()
     message(STATUS "spdlog found: ${spdlog_VERSION}")
