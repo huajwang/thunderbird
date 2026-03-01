@@ -56,7 +56,11 @@ int main() {
         sim_raw->inject(pkt_buf, n);
     }
 
-    conn_mgr->connect("sim://health-demo");
+    auto status = conn_mgr->connect("sim://health-demo");
+    if (status != Status::OK) {
+        std::fprintf(stderr, "Connection failed: %s\n", status_string(status));
+        return 1;
+    }
 
     // ── 2. Configure health monitor ─────────────────────────────────────────
     DeviceHealthConfig health_cfg;

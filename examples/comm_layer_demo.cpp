@@ -215,38 +215,6 @@ int main() {
     //   std::printf("vlp16 supported? %s\n",
     //               DecoderFactory::is_supported("vlp16") ? "yes" : "no");
     //
-    //   // Use the custom decoder constructor:
-    //   auto mgr = std::make_unique<ConnectionManager>(
-    //       std::move(eth_transport),
-    //       std::move(decoder),     // <-- custom decoder
-    //       conn,
-    //       retry);
-
-    // ── 11. raw_streaming_mode — skip handshake for third-party devices ─────
-    //
-    // Third-party LiDARs (Velodyne, Ouster, etc.) don't speak the
-    // Thunderbird control protocol.  Set raw_streaming_mode = true to skip
-    // the handshake/heartbeat state machine and stream raw UDP datagrams
-    // directly into the decoder's feed().
-    //
-    //   RetryConfig raw_retry;
-    //   raw_retry.raw_streaming_mode = true;
-    //   raw_retry.max_connect_attempts = 1;
-    //
-    //   auto vlp_decoder = DecoderFactory::create("vlp16");
-    //   auto mgr = std::make_unique<ConnectionManager>(
-    //       std::make_unique<EthernetTransport>(),
-    //       std::move(vlp_decoder),
-    //       ConnectionConfig{},
-    //       raw_retry);
-    //
-    //   mgr->decoder().on_lidar([](auto frame) {
-    //       std::printf("VLP-16: %zu points\n", frame->points.size());
-    //   });
-    //
-    //   mgr->connect("eth://192.168.1.201:2368");
-    //   mgr->start_streaming();
-
     // Verify DecoderFactory compiles correctly.
     std::printf("\n── DecoderFactory ───────────────────\n");
     for (const char* model : {"thunderbird", "vlp16", "unknown"}) {

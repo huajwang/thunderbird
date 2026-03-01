@@ -166,7 +166,8 @@ int main() {
                         meta.is_partial ? "yes" : "no");
         });
 
-    // Feed 500 packets over 500 ms → expect ~5 frames.
+    // Feed 500 packets over 500 ms → expect 4 full frames (100 ms each)
+    // plus one partial frame flushed by check_timeout().
     hw_ns   = 2'000'000'000;
     host_ns = 2'000'000'000;
     for (int i = 0; i < 500; ++i) {
@@ -175,6 +176,7 @@ int main() {
         hw_ns   += 1'000'000;   // 1 ms between packets
         host_ns += 1'000'000;
     }
+    time_asm.check_timeout(host_ns);   // flush trailing partial frame
 
     std::printf("\nTimeBased frames emitted: %d\n", time_frames);
 

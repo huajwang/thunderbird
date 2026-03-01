@@ -170,7 +170,7 @@ int main() {
         car_clock.observe(hw_ns, host_ns);
     }
 
-    // Feed 3 PPS pulses at ~1 second intervals to achieve lock.
+    // Feed 4 PPS pulses at ~1 second intervals to achieve lock.
     for (int i = 0; i < 4; ++i) {
         int64_t pps_host = 2'000'000'000'000LL + i * 1'000'000'000LL;
         int64_t pps_hw   = pps_host + 5'000;

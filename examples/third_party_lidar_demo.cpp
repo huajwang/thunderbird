@@ -2,28 +2,25 @@
 // Example — Third-party LiDAR end-to-end integration
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Demonstrates the complete Phase 2 pipeline for a non-Thunderbird LiDAR
-// (Velodyne VLP-16) using all new subsystems together:
+// Demonstrates the core Phase 2 decoding pipeline for a non-Thunderbird LiDAR
+// (Velodyne VLP-16) using three subsystems together:
 //
 //   1. DecoderFactory — create a VLP-16 decoder by model name
-//   2. ConnectionManager — custom decoder constructor + raw_streaming_mode
-//   3. ClockService — synchronize VLP-16 GPS timestamps to host clock
-//   4. LidarFrameAssembler — accumulate per-packet data into full sweeps
-//   5. DeviceHealthMonitor — monitor packet rates, integrity, and staleness
+//   2. ClockService — synchronize VLP-16 GPS timestamps to host clock
+//   3. LidarFrameAssembler — accumulate per-packet data into full sweeps
 //
-// Because the VLP-16 uses a simple "fire-and-forget" UDP stream with no
-// handshake, we demonstrate the flow using synthetic packets injected into
-// a SimulatedTransport.  To run against real hardware, swap the transport
-// for EthernetTransport and connect to "eth://192.168.1.201:2368".
+// The demo feeds synthetic VLP-16 packets directly into the decoder to
+// show the decode → clock-sync → frame-assembly data flow.  In production,
+// a ConnectionManager with raw_streaming_mode would drive the I/O loop
+// and a DeviceHealthMonitor would track packet rates (see health_monitor_demo
+// and comm_layer_demo for those APIs).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 #include "thunderbird/thunderbird.h"
-#include "thunderbird/simulated_transport.h"
 #include "thunderbird/decoders/decoder_factory.h"
 #include "thunderbird/decoders/velodyne_vlp16.h"
 #include "thunderbird/clock_service.h"
 #include "thunderbird/lidar_frame_assembler.h"
-#include "thunderbird/device_health_monitor.h"
 
 #include <chrono>
 #include <cstdio>
@@ -95,10 +92,16 @@ int main() {
     ClockService clock(clock_cfg);
 
     clock.on_event([](ClockEvent event, const ClockDiagnostics& /*diag*/) {
-        const char* names[] = {
-            "Calibrated", "DriftWarning", "TimeJump",
-            "PpsLocked", "PpsLost", "ModelReset"};
-        std::printf("  [Clock] %s\n", names[static_cast<int>(event)]);
+        const char* name = "Unknown";
+        switch (event) {
+            case ClockEvent::Calibrated:   name = "Calibrated";   break;
+            case ClockEvent::DriftWarning: name = "DriftWarning"; break;
+            case ClockEvent::TimeJump:     name = "TimeJump";     break;
+            case ClockEvent::PpsLocked:    name = "PpsLocked";    break;
+            case ClockEvent::PpsLost:      name = "PpsLost";      break;
+            case ClockEvent::ModelReset:   name = "ModelReset";   break;
+        }
+        std::printf("  [Clock] %s\n", name);
     });
     std::printf("ClockService created (Drone profile)\n\n");
 
@@ -216,33 +219,6 @@ int main() {
                 static_cast<unsigned long long>(as.packets_ingested),
                 static_cast<unsigned long long>(as.points_ingested),
                 as.avg_points_per_frame);
-
-    // ── 9. ConnectionManager with custom decoder + raw_streaming_mode ───────
-    //
-    // In production, the entire pipeline above is wired through
-    // ConnectionManager's I/O loop automatically:
-    //
-    //   auto vlp = DecoderFactory::create("vlp16");
-    //   RetryConfig raw_retry;
-    //   raw_retry.raw_streaming_mode = true;
-    //
-    //   ConnectionManager mgr(
-    //       std::make_unique<EthernetTransport>(),
-    //       std::move(vlp),
-    //       ConnectionConfig{},
-    //       raw_retry);
-    //
-    //   mgr.decoder().on_lidar([&](auto frame) {
-    //       clock.observe(frame->timestamp.nanoseconds,
-    //                     frame->host_timestamp.nanoseconds);
-    //       assembler.feed(frame, ...);
-    //   });
-    //
-    //   DeviceHealthMonitor health(mgr, mgr.decoder(), health_cfg);
-    //   health.start();
-    //
-    //   mgr.connect("eth://192.168.1.201:2368");
-    //   mgr.start_streaming();
 
     std::puts("\nDone.");
     return 0;
