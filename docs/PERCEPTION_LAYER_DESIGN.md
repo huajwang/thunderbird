@@ -485,7 +485,7 @@ private:
 | Thread | Name | Affinity | Purpose | Blocking? |
 |--------|------|----------|---------|-----------|
 | Existing: SLAM worker | `slam_worker` | CPU core 0-1 | ESIKF + ikd-Tree | Never blocks on perception |
-| T1 | `percept_preproc` | CPU core 2 | Voxel filter, ground seg, clustering | Blocks on detection_ring_ full (backpressure) |
+| T1 | `percept_preproc` | CPU core 2 | Voxel filter, ground seg, clustering | Non-blocking; detection_ring_ overwrites oldest frame when full (drop policy, no backpressure) |
 | T2 | `percept_detect` | GPU + CPU core 3 | Neural net inference or cluster classify | Blocks on GPU kernel completion |
 | T3 | `percept_track` | CPU core 2 | Association + Kalman + lifecycle | Never blocks downstream |
 

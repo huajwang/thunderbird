@@ -25,6 +25,16 @@ option(THUNDERBIRD_ENABLE_GPU_PERCEPTION
     "Build GPU-accelerated 3D detector backends (requires CUDA + TensorRT)" OFF)
 
 if(THUNDERBIRD_ENABLE_GPU_PERCEPTION)
+    # Guard against older CMake versions where the CUDAToolkit package
+    # is not reliably available, even though the project minimum is 3.16.
+    if(CMAKE_VERSION VERSION_LESS 3.17)
+        message(FATAL_ERROR
+            "THUNDERBIRD_ENABLE_GPU_PERCEPTION requires CMake >= 3.17 because it "
+            "relies on find_package(CUDAToolkit ...), which is not available in "
+            "all CMake 3.16 installations. Your CMake version is ${CMAKE_VERSION}. "
+            "Please upgrade CMake or disable THUNDERBIRD_ENABLE_GPU_PERCEPTION.")
+    endif()
+
     # Require a minimum CUDA toolkit version to avoid known-incompatible releases.
     find_package(CUDAToolkit 11.4 REQUIRED)
 
