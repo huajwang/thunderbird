@@ -89,7 +89,7 @@ and enables link-time ABI mismatch detection.
 
 @section links Further Reading
 
-- <a href="https://github.com/thunderbird-sdk/thunderbird">GitHub Repository</a>
+- <a href="https://github.com/huajwang/thunderbird">GitHub Repository</a>
 - <a href="../../docs/guides/time-synchronization.md">Time Synchronization Guide</a>
 - <a href="../../docs/guides/advanced-configuration.md">Advanced Configuration</a>
 - <a href="../../docs/troubleshooting/troubleshooting.md">Troubleshooting</a>
