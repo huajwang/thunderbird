@@ -41,21 +41,27 @@ class EMA {
 public:
     explicit EMA(double alpha = 0.1) : alpha_(alpha) {}
 
+    /// Called from exactly one writer thread.
     void update(double value) noexcept {
-        if (!initialised_) {
-            value_ = value;
-            initialised_ = true;
+        if (!initialised_.load(std::memory_order_relaxed)) {
+            value_.store(value, std::memory_order_relaxed);
+            initialised_.store(true, std::memory_order_relaxed);
         } else {
-            value_ = alpha_ * value + (1.0 - alpha_) * value_;
+            const double prev = value_.load(std::memory_order_relaxed);
+            value_.store(alpha_ * value + (1.0 - alpha_) * prev,
+                         std::memory_order_relaxed);
         }
     }
 
-    [[nodiscard]] double get() const noexcept { return value_; }
+    /// Safe to call from any thread (relaxed atomic load).
+    [[nodiscard]] double get() const noexcept {
+        return value_.load(std::memory_order_relaxed);
+    }
 
 private:
-    double alpha_;
-    double value_{0};
-    bool   initialised_{false};
+    double              alpha_;
+    std::atomic<double> value_{0.0};
+    std::atomic<bool>   initialised_{false};
 };
 
 /// Monotonic wall-clock timer (microsecond precision).
@@ -255,6 +261,10 @@ struct PerceptionEngine::Impl {
             tracked.preprocess_ms  = ema_preprocess.get();
             tracked.detection_ms   = ema_detection.get();
             tracked.tracking_ms    = track_ms;
+            tracked.input_points   = (*det_frame)->input_points;
+            tracked.filtered_points= (*det_frame)->filtered_points;
+            tracked.num_clusters   = (*det_frame)->cluster_count;
+            tracked.num_detections = static_cast<uint32_t>((*det_frame)->detections.size());
 
             stat_frames_processed.fetch_add(1, std::memory_order_relaxed);
             stat_active_tracks.store(
@@ -347,6 +357,14 @@ void PerceptionEngine::stop() {
     if (impl_->t2_detector.joinable())     impl_->t2_detector.join();
     if (impl_->t3_tracker.joinable())      impl_->t3_tracker.join();
 
+    // Drain all ring buffers so a subsequent start() doesn't process
+    // stale frames that were enqueued while the pipeline was stopping.
+    impl_->perception_ring.clear();
+    impl_->detection_ring.clear();
+    impl_->tracking_ring.clear();
+    impl_->output_ring.clear();
+    impl_->detection_output_ring.clear();
+
     // Reset per-run rate limiting state so a subsequent start() begins cleanly.
     impl_->last_processed_ts = 0;
     impl_->running.store(false, std::memory_order_release);
@@ -372,6 +390,13 @@ bool PerceptionEngine::isRunning() const noexcept {
 void PerceptionEngine::feedSlamOutput(
     std::shared_ptr<const odom::SlamOutput> output)
 {
+    // Ignore frames when the pipeline is not running.  Without this
+    // guard, frames pushed after stop() (or before start()) would
+    // accumulate in the ring and be processed as stale data on the
+    // next start().
+    if (!impl_->running.load(std::memory_order_acquire))
+        return;
+
     impl_->stat_frames_received.fetch_add(1, std::memory_order_relaxed);
 
     // Lock-free push.  If ring is full, oldest is dropped.
@@ -418,8 +443,8 @@ PerceptionEngine::Stats PerceptionEngine::stats() const noexcept {
     s.frames_received  = impl_->stat_frames_received.load(std::memory_order_relaxed);
     s.frames_processed = impl_->stat_frames_processed.load(std::memory_order_relaxed);
     s.frames_dropped   = impl_->perception_ring.dropped();
-    // NOTE: EMA reads are unsynchronised with worker-thread updates.
-    // Values may be slightly stale — acceptable for diagnostic purposes.
+    // EMA reads use relaxed atomics — values may be slightly stale
+    // but free of undefined behaviour.  Acceptable for diagnostics.
     s.avg_preprocess_ms = impl_->ema_preprocess.get();
     s.avg_detection_ms  = impl_->ema_detection.get();
     s.avg_tracking_ms   = impl_->ema_tracking.get();

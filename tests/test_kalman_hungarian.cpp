@@ -178,7 +178,7 @@ static void test_kf_yaw_wrapping() {
     kf.update(z, 0.5, 0.1);
 
     // Yaw should remain in [-π, π]
-    assert(kf.yaw() >= -M_PI && kf.yaw() <= M_PI);
+    assert(kf.yaw() >= -kPi && kf.yaw() <= kPi);
 
     std::puts("  [PASS] kf_yaw_wrapping");
 }

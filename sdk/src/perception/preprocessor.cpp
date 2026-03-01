@@ -265,6 +265,7 @@ struct PointCloudPreprocessor::Impl {
 
         uint32_t cluster_id = 0;
         std::queue<uint32_t> frontier;
+        std::vector<uint32_t> cluster_indices;  // tracks points in current cluster
 
         for (uint32_t seed = 0; seed < n; ++seed) {
             if (labels[seed] != 0) continue;
@@ -272,6 +273,7 @@ struct PointCloudPreprocessor::Impl {
 
             ++cluster_id;
             int cluster_size = 0;
+            cluster_indices.clear();
             frontier.push(seed);
             labels[seed] = cluster_id;
 
@@ -279,6 +281,7 @@ struct PointCloudPreprocessor::Impl {
                 const uint32_t idx = frontier.front();
                 frontier.pop();
                 ++cluster_size;
+                cluster_indices.push_back(idx);
 
                 // Once oversized, keep draining the existing frontier (so
                 // already-enqueued points keep their temporary labels) but
@@ -321,8 +324,8 @@ struct PointCloudPreprocessor::Impl {
             // Remove too-small or too-large clusters; relabel to 0 (unassigned).
             if (cluster_size < config.cluster_min_points ||
                 cluster_size > config.cluster_max_points) {
-                for (uint32_t i = 0; i < n; ++i) {
-                    if (labels[i] == cluster_id) labels[i] = 0;
+                for (uint32_t idx : cluster_indices) {
+                    labels[idx] = 0;
                 }
                 --cluster_id;
             }

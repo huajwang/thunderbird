@@ -134,7 +134,9 @@ public:
     /// initialize() must have succeeded before calling start().
     void start();
 
-    /// Signal threads to stop and join them.  Safe to call multiple times.
+    /// Signal threads to stop and join them.  All internal ring buffers
+    /// are cleared so that a subsequent start() begins with a clean state.
+    /// Safe to call multiple times.
     void stop();
 
     /// Release all resources (model, GPU memory).  stop() is called
@@ -151,6 +153,9 @@ public:
     /// Called from the SLAM worker's onSlamOutput callback.  This is a
     /// single lock-free SPSC push (~100 ns).  If the ring is full,
     /// the oldest unprocessed frame is silently dropped.
+    ///
+    /// If the pipeline is not running (before start() or after stop()),
+    /// the call is a no-op and the frame is discarded.
     ///
     /// @param output  SLAM output containing pose + deskewed cloud.
     void feedSlamOutput(std::shared_ptr<const odom::SlamOutput> output);
@@ -210,9 +215,9 @@ public:
     /// Query current pipeline statistics.
     ///
     /// Counter fields (frames_received, frames_processed, etc.) are atomic.
-    /// Timing averages (avg_*_ms) are read from unsynchronised EMA accumulators
-    /// and may be slightly stale or inconsistent — this is acceptable for
-    /// diagnostics and avoids contention on the hot processing path.
+    /// Timing averages (avg_*_ms) use relaxed atomic loads from per-thread
+    /// EMA accumulators — values may be slightly stale but are always
+    /// well-defined (no data race).
     [[nodiscard]] Stats stats() const noexcept;
 
     /// Number of frames dropped at perception ingress ring.

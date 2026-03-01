@@ -105,6 +105,11 @@ struct DetectionFrame {
     odom::Pose6D              ego_pose;           ///< ego pose at scan time
     std::vector<Detection3D>  detections;         ///< all detections this frame
 
+    // ── Pipeline counts (carried from preprocessor for diagnostics) ────
+    uint32_t input_points{0};    ///< raw point count before filtering
+    uint32_t filtered_points{0}; ///< point count after filtering
+    uint32_t cluster_count{0};   ///< clusters from preprocessor
+
     [[nodiscard]] uint32_t num_detections() const noexcept {
         return static_cast<uint32_t>(detections.size());
     }

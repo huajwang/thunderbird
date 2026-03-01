@@ -54,8 +54,13 @@ public:
 
     DetectionFrame detect(const DetectionInput& input) override {
         DetectionFrame result;
-        result.timestamp_ns = input.timestamp_ns;
-        result.ego_pose     = input.ego_pose;
+        result.timestamp_ns    = input.timestamp_ns;
+        result.ego_pose        = input.ego_pose;
+        result.input_points    = input.raw_point_count;
+        result.filtered_points = input.filtered_cloud
+                                   ? static_cast<uint32_t>(input.filtered_cloud->points.size())
+                                   : 0u;
+        result.cluster_count   = input.num_clusters;
 
         if (!input.filtered_cloud || input.num_clusters == 0) {
             return result;
@@ -69,20 +74,22 @@ public:
             num_clusters,
             static_cast<uint32_t>(config_.detector.max_detections)));
 
+        // Build per-cluster index lists in a single O(n) pass.
+        cluster_map_.clear();
+        cluster_map_.resize(num_clusters + 1);  // index 0 = unassigned, unused
+        for (size_t i = 0; i < std::min(points.size(), labels.size()); ++i) {
+            if (labels[i] > 0 && labels[i] <= num_clusters) {
+                cluster_map_[labels[i]].push_back(static_cast<uint32_t>(i));
+            }
+        }
+
         // Process each cluster.
         for (uint32_t cid = 1; cid <= num_clusters; ++cid) {
-            // Gather cluster points.
-            cluster_pts_.clear();
-            for (size_t i = 0; i < points.size(); ++i) {
-                if (i < labels.size() && labels[i] == cid) {
-                    cluster_pts_.push_back(i);
-                }
-            }
-
-            if (cluster_pts_.empty()) continue;
+            const auto& cluster_pts = cluster_map_[cid];
+            if (cluster_pts.empty()) continue;
 
             // Compute cluster statistics.
-            ClusterStats stats = computeStats(points, cluster_pts_);
+            ClusterStats stats = computeStats(points, cluster_pts);
 
             // Classify by geometry.
             ObjectClass label = ObjectClass::Unknown;
@@ -102,7 +109,7 @@ public:
             det.label           = label;
             det.confidence      = confidence;
             det.cluster_id      = cid;
-            det.num_points      = static_cast<uint32_t>(cluster_pts_.size());
+            det.num_points      = static_cast<uint32_t>(cluster_pts.size());
 
             result.detections.push_back(det);
 
@@ -117,8 +124,8 @@ private:
     PerceptionConfig config_;
     bool initialized_{false};
 
-    // Scratch buffer.
-    std::vector<size_t> cluster_pts_;
+    // Scratch buffer: per-cluster point indices, built once per detect() call.
+    std::vector<std::vector<uint32_t>> cluster_map_;
 
     // ── Classifier confidence thresholds ────────────────────────────────
     //
@@ -150,14 +157,14 @@ private:
 
     ClusterStats computeStats(
         const std::vector<odom::PointXYZIT>& all_points,
-        const std::vector<size_t>& indices) const
+        const std::vector<uint32_t>& indices) const
     {
         ClusterStats s{};
         s.num_points = static_cast<uint32_t>(indices.size());
 
         // Centroid.
         double sx = 0, sy = 0, sz = 0;
-        for (size_t idx : indices) {
+        for (uint32_t idx : indices) {
             sx += all_points[idx].x;
             sy += all_points[idx].y;
             sz += all_points[idx].z;
@@ -170,7 +177,7 @@ private:
         // Covariance matrix (2D — x,y only for yaw estimation).
         double cxx = 0, cxy = 0, cyy = 0;
         double zmin = 1e9, zmax = -1e9;
-        for (size_t idx : indices) {
+        for (uint32_t idx : indices) {
             const double dx = all_points[idx].x - s.cx;
             const double dy = all_points[idx].y - s.cy;
             cxx += dx * dx;
@@ -197,7 +204,7 @@ private:
         const double sin_y = std::sin(s.yaw);
         double u_min = 1e9, u_max = -1e9;
         double v_min = 1e9, v_max = -1e9;
-        for (size_t idx : indices) {
+        for (uint32_t idx : indices) {
             const double dx = all_points[idx].x - s.cx;
             const double dy = all_points[idx].y - s.cy;
             const double u = dx * cos_y + dy * sin_y;

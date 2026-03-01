@@ -353,7 +353,6 @@ struct MultiObjectTracker::Impl {
         output.timestamp_ns   = ts;
         output.ego_pose       = detections.ego_pose;
         output.frame_sequence = frame_sequence++;
-        output.num_detections = static_cast<uint32_t>(nd);
 
         for (const auto& trk : tracks) {
             // Only export confirmed + coasting tracks.

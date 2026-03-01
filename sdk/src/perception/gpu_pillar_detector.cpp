@@ -26,6 +26,7 @@
 #include <cstring>
 #include <cstdio>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -71,14 +72,13 @@ DetectionFrame GpuPillarDetector::detect(const DetectionInput& input) {
 
     // GPU inference is not yet implemented — emit a one-time warning so
     // callers know that detections will be empty.
-    static bool warned = false;
-    if (!warned) {
+    static std::once_flag warn_once;
+    std::call_once(warn_once, [] {
         std::fprintf(stderr,
             "[thunderbird] WARNING: GpuPillarDetector::detect() is a stub — "
             "returning empty DetectionFrame.  Build with a real TensorRT "
             "backend to enable GPU inference.\n");
-        warned = true;
-    }
+    });
 
     // TODO: Real inference pipeline:
     //
@@ -148,14 +148,13 @@ DetectionFrame GpuCenterPointDetector::detect(const DetectionInput& input) {
 
     // GPU inference is not yet implemented — emit a one-time warning so
     // callers know that detections will be empty.
-    static bool warned = false;
-    if (!warned) {
+    static std::once_flag warn_once;
+    std::call_once(warn_once, [] {
         std::fprintf(stderr,
             "[thunderbird] WARNING: GpuCenterPointDetector::detect() is a stub "
             "— returning empty DetectionFrame.  Build with a real TensorRT "
             "backend to enable GPU inference.\n");
-        warned = true;
-    }
+    });
 
     // TODO: Real inference pipeline:
     //
