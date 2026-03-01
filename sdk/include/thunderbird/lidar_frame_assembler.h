@@ -10,7 +10,8 @@
 //   • Per-point dt_ns population for motion compensation
 //   • Partial-frame timeout for stalled sensors
 //
-// Threading: all methods are called from the I/O thread (single-threaded).
+// Threading: feed / emit methods are called from the I/O thread.
+// stats() is thread-safe and may be called from any thread (e.g. diagnostics).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
@@ -21,6 +22,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -257,7 +259,11 @@ public:
 
     // ── Diagnostics ─────────────────────────────────────────────────────
 
-    [[nodiscard]] AssemblerStats stats() const { return stats_; }
+    /// Thread-safe: returns the latest published stats snapshot.
+    [[nodiscard]] AssemblerStats stats() const {
+        std::lock_guard<std::mutex> lock(stats_mu_);
+        return stats_published_;
+    }
 
     // ── Lifecycle ───────────────────────────────────────────────────────
 
@@ -352,6 +358,12 @@ private:
             }
         }
         prev_frame_emit_host_ns_ = host_now_ns;
+
+        // Publish stats snapshot for cross-thread readers (diagnostics).
+        {
+            std::lock_guard<std::mutex> lock(stats_mu_);
+            stats_published_ = stats_;
+        }
 
         ++frame_sequence_;
 
@@ -452,8 +464,11 @@ private:
     uint32_t frame_sequence_{0};
     int64_t  prev_frame_emit_host_ns_{0};
 
-    // Statistics accumulators.
+    // Statistics accumulators (written only from I/O thread).
     AssemblerStats stats_{};
+    // Published snapshot — protected by stats_mu_ for cross-thread reads.
+    mutable std::mutex stats_mu_;
+    AssemblerStats stats_published_{};
     double sum_points_{0};
     double sum_packets_{0};
     double sum_period_ms_{0};

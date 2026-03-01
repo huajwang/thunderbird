@@ -87,7 +87,9 @@ The SDK uses per-module spdlog loggers that can be tuned independently.
 | `TimeSync` | `tb.timesync` | ClockService, TimeSync, SyncEngine |
 | `Slam` | `tb.slam` | SlamEngine, SlamHealth, SlamProfiler |
 | `Perception` | `tb.perception` | PerceptionEngine, ObjectDetector |
+| `Device` | `tb.device` | DeviceHealthMonitor |
 | `Recorder` | `tb.recorder` | Recorder, Player |
+| `Assembler` | `tb.assembler` | LidarFrameAssembler |
 
 ### Runtime Level Control
 
