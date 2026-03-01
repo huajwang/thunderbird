@@ -200,33 +200,46 @@ Maintains persistent track state across frames.
 # Example: drone perception config section appended to drone.yaml
 perception:
   enable: true
-  mode: drone                   # "drone" | "car"
 
   preprocessor:
     voxel_size: 0.1
     roi_radius: 30.0
     roi_z_min: -15.0
     roi_z_max: 15.0
-    ground_removal: height      # "height" | "ransac"
-    ground_height: -0.3
+    ground_method: ransac_plane       # "height_threshold" | "ransac_plane"
+    ground_height_threshold: -0.3     # used only in height_threshold mode
+    ransac_distance_threshold: 0.15
+    ransac_max_iterations: 100
     cluster_eps: 0.5
     cluster_min_points: 10
+    cluster_max_points: 50000
+    max_clusters: 256
 
   detector:
-    backend: cpu_cluster        # "cpu_cluster" | "gpu_pillar"
+    backend: cpu_cluster              # "cpu_cluster" | "gpu_point_pillars" | "gpu_center_point"
     # GPU-specific (ignored in cpu_cluster mode):
     model_path: ""
-    confidence_threshold: 0.3
+    model_config_path: ""
+    confidence_threshold: 0.35
     nms_iou_threshold: 0.5
+    max_detections: 200
 
   tracker:
     motion_model: constant_velocity   # "constant_velocity" | "ctrv"
-    association_metric: iou_3d        # "iou_3d" | "center_distance"
+    association_metric: iou_3d        # "iou_3d" | "center_distance" | "mahalanobis"
     confirm_hits: 3
     max_coast_frames: 5
+    tentative_max_misses: 2
     process_noise_pos: 0.5
     process_noise_vel: 1.0
+    process_noise_yaw: 0.1
     measurement_noise: 0.3
+    association_gate: 5.0
+
+  pipeline:
+    max_inference_rate_hz: 0          # 0 = process every frame
+    cuda_device_id: 0
+    publish_intermediate_detections: false
 ```
 
 ---

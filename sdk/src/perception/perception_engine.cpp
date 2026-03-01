@@ -302,6 +302,19 @@ PerceptionEngine::~PerceptionEngine() {
 }
 
 bool PerceptionEngine::initialize(const PerceptionConfig& config) {
+    // Guard against re-initialization while the pipeline is running.
+    // Worker threads hold raw pointers to preprocessor/detector/tracker;
+    // replacing them here would cause data races / null dereferences.
+    if (impl_->running.load(std::memory_order_acquire)) {
+        return false;
+    }
+
+    // If already initialised, require shutdown() first so callers
+    // are explicit about the lifecycle reset.
+    if (impl_->initialized.load(std::memory_order_acquire)) {
+        return false;
+    }
+
     impl_->config = config;
 
     // ── Create preprocessor ─────────────────────────────────────────────
