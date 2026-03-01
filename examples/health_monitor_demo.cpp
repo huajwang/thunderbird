@@ -68,8 +68,10 @@ int main() {
     health_cfg.heal_window_ms      = 1000;    // 1 second to heal
     health_cfg.rate_warn_ratio     = 0.70;
     health_cfg.rate_crit_ratio     = 0.30;
-    health_cfg.stall_threshold_ms  = 500;
-    health_cfg.stall_disconnect_threshold_ms = 5000;
+    // Disable stall detection for this demo — we only bump counters, not
+    // actual decoder bytes, so the stall detector would fire immediately.
+    health_cfg.stall_threshold_ms  = 60000;
+    health_cfg.stall_disconnect_threshold_ms = 120000;
     health_cfg.crc_error_rate_warn = 0.01;
     health_cfg.crc_error_rate_crit = 0.05;
     health_cfg.expected_lidar_hz   = 10.0;
@@ -77,7 +79,12 @@ int main() {
     health_cfg.expected_camera_fps = 30.0;
 
     // ── 3. Create monitor ───────────────────────────────────────────────────
+    // Construct BEFORE connect so it can observe ConnectionEvent::StreamStarted.
     DeviceHealthMonitor monitor(*conn_mgr, conn_mgr->decoder(), health_cfg);
+    monitor.start();
+
+    // Now notify the monitor that streaming has begun.
+    monitor.notify_connection_event(ConnectionEvent::StreamStarted);
 
     // ── 4. Register callbacks ───────────────────────────────────────────────
 
@@ -113,8 +120,7 @@ int main() {
                         snap.health_score);
         });
 
-    // ── 5. Start monitor ────────────────────────────────────────────────────
-    monitor.start();
+    // ── 5. Monitor is already running ────────────────────────────────────────
     std::printf("Monitor started (tick_hz=%.0f)\n\n", health_cfg.tick_hz);
 
     // ── 6. Simulate healthy traffic by bumping sensor counters ──────────────

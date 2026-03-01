@@ -22,10 +22,8 @@
 #include "thunderbird/clock_service.h"
 #include "thunderbird/lidar_frame_assembler.h"
 
-#include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <thread>
 
 using namespace thunderbird;
 

@@ -176,7 +176,10 @@ int main() {
         hw_ns   += 1'000'000;   // 1 ms between packets
         host_ns += 1'000'000;
     }
-    time_asm.check_timeout(host_ns);   // flush trailing partial frame
+    // Advance time beyond partial_timeout to flush the trailing partial frame.
+    // Default partial_timeout_mul = 1.5 × 100 ms period = 150 ms.
+    int64_t flush_ns = host_ns + 250'000'000;  // +250 ms well past timeout
+    time_asm.check_timeout(flush_ns);
 
     std::printf("\nTimeBased frames emitted: %d\n", time_frames);
 

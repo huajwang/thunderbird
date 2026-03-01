@@ -24,7 +24,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
+#include <memory>
 #include <thread>
+#include <vector>
 
 // ── Helper: feed synthetic packets into a SimulatedTransport ────────────────
 // In a real scenario the device firmware sends these over Ethernet/USB.
