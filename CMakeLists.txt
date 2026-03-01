@@ -65,13 +65,18 @@ if(NOT spdlog_FOUND)
     set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
     # spdlog static lib must be compiled with -fPIC so it can be linked
-    # into our shared library (libthunderbird_sdk.so).
-    set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE BOOL "" FORCE)
+    # into our shared library (libthunderbird_sdk.so). We set
+    # POSITION_INDEPENDENT_CODE on the spdlog target after it is created
+    # instead of forcing CMAKE_POSITION_INDEPENDENT_CODE globally.
     FetchContent_MakeAvailable(spdlog)
 else()
     message(STATUS "spdlog found: ${spdlog_VERSION}")
 endif()
 
+# Ensure spdlog is built with PIC without affecting unrelated targets.
+if(TARGET spdlog)
+    set_property(TARGET spdlog PROPERTY POSITION_INDEPENDENT_CODE ON)
+endif()
 # ── SDK core library ─────────────────────────────────────────────────────────
 add_subdirectory(sdk)
 
