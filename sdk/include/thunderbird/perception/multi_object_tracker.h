@@ -11,7 +11,7 @@
 //   • Configurable association metric (IoU-3D, centre distance, Mahalanobis)
 //   • Gating to reject implausible matches before assignment
 //   • Track lifecycle:  Tentative → Confirmed → Coasting → Deleted
-//   • Monotonic, never-reused track IDs
+//   • Monotonic track IDs between resets (ID counter restarts on reset)
 //   • Covariance published per-track for downstream fusion
 //
 // Thread safety:
