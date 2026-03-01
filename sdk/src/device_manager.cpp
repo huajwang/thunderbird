@@ -5,6 +5,7 @@
 #include "thunderbird/sync_engine.h"
 #include "thunderbird/time_sync.h"
 #include "thunderbird/data_layer.h"
+#include "thunderbird/device_health_monitor.h"
 
 // Simulated drivers
 #include "thunderbird/drivers/simulated_lidar.h"
@@ -50,6 +51,9 @@ struct DeviceManager::Impl {
     // Hardware driver (used when not simulated)
     std::shared_ptr<HardwareDriver> hw_driver;
 
+    // Device health monitor (hardware mode only)
+    std::unique_ptr<DeviceHealthMonitor> health_monitor;
+
     // Data Abstraction Layer (Pull + Callback API)
     data::DataLayer data_layer;
 
@@ -77,6 +81,8 @@ Status DeviceManager::connect() {
 
     // --- LiDAR callback wiring ---
     auto lidar_cb = [this](std::shared_ptr<const LidarFrame> f) {
+        // Health monitor packet counting (relaxed atomic, ~2 ns).
+        if (impl_->health_monitor) impl_->health_monitor->count_lidar();
         impl_->sync_engine.feed_lidar(f);
         impl_->data_layer.ingestLidar(f);
         // Feed time-sync engine (convert internal → public type inline)
@@ -95,6 +101,8 @@ Status DeviceManager::connect() {
 
     // --- IMU callback wiring ---
     auto imu_cb = [this](std::shared_ptr<const ImuSample> s) {
+        // Health monitor packet counting.
+        if (impl_->health_monitor) impl_->health_monitor->count_imu();
         impl_->sync_engine.feed_imu(s);
         impl_->data_layer.ingestImu(s);
         // Feed time-sync engine
@@ -110,6 +118,8 @@ Status DeviceManager::connect() {
 
     // --- Camera callback wiring ---
     auto camera_cb = [this](std::shared_ptr<const CameraFrame> f) {
+        // Health monitor packet counting.
+        if (impl_->health_monitor) impl_->health_monitor->count_camera();
         impl_->sync_engine.feed_camera(f);
         impl_->data_layer.ingestCamera(f);
         // Feed time-sync engine
@@ -166,6 +176,20 @@ Status DeviceManager::connect() {
     Status hw_connect = impl_->hw_driver->connect(uri);
     if (hw_connect != Status::OK) return hw_connect;
 
+    // Create device health monitor.
+    {
+        DeviceHealthConfig hcfg;
+        hcfg.expected_lidar_hz  = impl_->config.lidar_hz;
+        hcfg.expected_imu_hz    = impl_->config.imu_hz;
+        hcfg.expected_camera_fps = impl_->config.camera_fps;
+
+        auto& cmgr = impl_->hw_driver->connection();
+        auto& prs  = cmgr.parser();
+
+        impl_->health_monitor = std::make_unique<DeviceHealthMonitor>(
+            cmgr, prs, hcfg);
+    }
+
     // Create facade drivers that the rest of DeviceManager expects.
     impl_->lidar_driver  = std::make_unique<HardwareSensorFacade>(
         SensorType::LiDAR, impl_->hw_driver);
@@ -189,9 +213,11 @@ Status DeviceManager::connect() {
 
 Status DeviceManager::disconnect() {
     if (impl_->streaming) stop();
+    if (impl_->health_monitor) impl_->health_monitor->stop();
     impl_->lidar_driver.reset();
     impl_->imu_driver.reset();
     impl_->camera_driver.reset();
+    impl_->health_monitor.reset();
     impl_->connected = false;
     return Status::OK;
 }
@@ -230,11 +256,18 @@ Status DeviceManager::start() {
     }
 
     impl_->streaming = true;
+
+    // Start device health monitor after streaming begins.
+    if (impl_->health_monitor) impl_->health_monitor->start();
+
     return Status::OK;
 }
 
 Status DeviceManager::stop() {
     if (!impl_->streaming) return Status::OK;
+
+    // Stop health monitor before stopping streams.
+    if (impl_->health_monitor) impl_->health_monitor->stop();
 
     for (auto* drv : {impl_->lidar_driver.get(),
                       impl_->imu_driver.get(),
@@ -286,4 +319,21 @@ const data::TimeSyncEngine& DeviceManager::time_sync() const {
 void DeviceManager::on_synced_frame(data::SyncedFrameCallback cb) {
     impl_->time_sync_engine.onSyncedFrame(std::move(cb));
 }
+
+// ─── Device Health ─────────────────────────────────────────────────────────────────
+
+DeviceHealthMonitor* DeviceManager::health_monitor() {
+    return impl_->health_monitor.get();
+}
+
+const DeviceHealthMonitor* DeviceManager::health_monitor() const {
+    return impl_->health_monitor.get();
+}
+
+DeviceHealthState DeviceManager::device_health() const {
+    if (impl_->health_monitor)
+        return impl_->health_monitor->state();
+    return DeviceHealthState::Disconnected;
+}
+
 } // namespace thunderbird

@@ -65,3 +65,7 @@ add_executable(test_kalman_hungarian test_kalman_hungarian.cpp)
 target_include_directories(test_kalman_hungarian PRIVATE ${CMAKE_SOURCE_DIR}/sdk/src/perception)
 target_link_libraries(test_kalman_hungarian PRIVATE thunderbird_sdk)
 add_test(NAME KalmanHungarian COMMAND test_kalman_hungarian)
+
+add_executable(test_device_health_monitor test_device_health_monitor.cpp)
+target_link_libraries(test_device_health_monitor PRIVATE thunderbird_sdk Threads::Threads)
+add_test(NAME DeviceHealthMonitor COMMAND test_device_health_monitor)

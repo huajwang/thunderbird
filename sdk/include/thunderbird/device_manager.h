@@ -25,6 +25,7 @@
 #include "thunderbird/connection_manager.h"
 #include "thunderbird/data_layer.h"
 #include "thunderbird/time_sync.h"
+#include "thunderbird/device_health_monitor.h"
 
 #include <memory>
 #include <string>
@@ -116,6 +117,15 @@ public:
     /// Returns a non-owning reference; lifetime is tied to the DeviceManager.
     data::DataLayer& data_layer();
     const data::DataLayer& data_layer() const;
+
+    // ── Device Health ────────────────────────────────────────────────────────
+
+    /// Access the device health monitor.  Returns nullptr in simulated mode.
+    DeviceHealthMonitor* health_monitor();
+    const DeviceHealthMonitor* health_monitor() const;
+
+    /// Convenience: current device health state.
+    DeviceHealthState device_health() const;
 
     // ── Statistics ──────────────────────────────────────────────────────────
 

@@ -615,6 +615,15 @@ struct SlamDaemon::Impl {
             if (device) {
                 hs.sensor_connected = device->is_connected();
                 hs.sensor_streaming = device->is_streaming();
+
+                // Populate structured device health from DeviceHealthMonitor.
+                if (auto* hm = device->health_monitor()) {
+                    auto dhs = hm->snapshot();
+                    hs.device_health_score = dhs.health_score;
+                    hs.lidar_hz            = dhs.lidar_hz;
+                    hs.imu_hz              = dhs.imu_hz;
+                    hs.device_degraded     = (dhs.state == DeviceHealthState::Degraded);
+                }
             }
 
             hs.warm_started = warm_started;
@@ -640,6 +649,13 @@ struct SlamDaemon::Impl {
                 log.log(LogLevel::Warning, "health",
                         "Clock drift: " +
                         std::to_string(hs.drift_ns_per_sec) + " ns/s");
+            }
+            if (hs.device_degraded) {
+                log.log(LogLevel::Warning, "health",
+                        "Device degraded: score=" +
+                        std::to_string(hs.device_health_score) +
+                        " lidar=" + std::to_string(hs.lidar_hz) + " Hz" +
+                        " imu=" + std::to_string(hs.imu_hz) + " Hz");
             }
 
             // Systemd watchdog.
