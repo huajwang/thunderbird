@@ -10,8 +10,8 @@
 //   • Missed detections eventually delete track
 //   • Multiple objects tracked independently
 //   • reset() clears all state
-//   • Track IDs are monotonically increasing and never reused
-//   • Velocity estimation after several frames
+//   • Track IDs are monotonically increasing within a run/session between
+//     resets; IDs may be reused after reset()
 //
 // ─────────────────────────────────────────────────────────────────────────────
 #include "thunderbird/perception/multi_object_tracker.h"
