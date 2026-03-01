@@ -21,3 +21,15 @@ target_link_libraries(sync_layer_demo PRIVATE thunderbird_sdk)
 
 add_executable(recorder_demo recorder_demo.cpp)
 target_link_libraries(recorder_demo PRIVATE thunderbird_sdk)
+
+add_executable(clock_service_demo clock_service_demo.cpp)
+target_link_libraries(clock_service_demo PRIVATE thunderbird_sdk)
+
+add_executable(frame_assembler_demo frame_assembler_demo.cpp)
+target_link_libraries(frame_assembler_demo PRIVATE thunderbird_sdk)
+
+add_executable(health_monitor_demo health_monitor_demo.cpp)
+target_link_libraries(health_monitor_demo PRIVATE thunderbird_sdk)
+
+add_executable(third_party_lidar_demo third_party_lidar_demo.cpp)
+target_link_libraries(third_party_lidar_demo PRIVATE thunderbird_sdk)
