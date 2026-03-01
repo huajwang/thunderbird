@@ -16,6 +16,7 @@
 #ifdef THUNDERBIRD_HAS_GPU_PERCEPTION
 
 #include "thunderbird/perception/object_detector.h"
+#include "gpu_detector_decl.h"
 
 // In a real build, these would be:
 //   #include <NvInfer.h>

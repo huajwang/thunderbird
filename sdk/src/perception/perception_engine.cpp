@@ -379,6 +379,10 @@ void PerceptionEngine::shutdown() {
     }
     impl_->tracker.reset();
     impl_->preprocessor.reset();
+
+    // Mark uninitialised so a subsequent start() cannot pass the
+    // initialized assert and dereference null stage pointers.
+    impl_->initialized.store(false, std::memory_order_release);
 }
 
 bool PerceptionEngine::isRunning() const noexcept {

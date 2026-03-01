@@ -298,30 +298,10 @@ private:
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  GpuPillarDetector — stub (requires THUNDERBIRD_HAS_GPU_PERCEPTION build)
+//  GPU detector declarations (shared with gpu_pillar_detector.cpp)
 // ═════════════════════════════════════════════════════════════════════════════
 
-#ifdef THUNDERBIRD_HAS_GPU_PERCEPTION
-
-class GpuPillarDetector final : public ObjectDetector {
-public:
-    bool initialize(const PerceptionConfig& config) override;
-    void teardown() override;
-    DetectionFrame detect(const DetectionInput& input) override;
-    [[nodiscard]] const char* name() const noexcept override { return "GpuPillarDetector (TensorRT)"; }
-    [[nodiscard]] bool uses_gpu() const noexcept override { return true; }
-};
-
-class GpuCenterPointDetector final : public ObjectDetector {
-public:
-    bool initialize(const PerceptionConfig& config) override;
-    void teardown() override;
-    DetectionFrame detect(const DetectionInput& input) override;
-    [[nodiscard]] const char* name() const noexcept override { return "GpuCenterPointDetector (TensorRT)"; }
-    [[nodiscard]] bool uses_gpu() const noexcept override { return true; }
-};
-
-#endif // THUNDERBIRD_HAS_GPU_PERCEPTION
+#include "gpu_detector_decl.h"
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  Factory
