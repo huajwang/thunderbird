@@ -95,10 +95,19 @@ device.connect();
 # Option A: Run as root (not recommended for production)
 sudo ./my_app
 
-# Option B: udev rule (recommended)
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="XXXX", MODE="0666"' | \
+# Option B: udev rule with dedicated group (recommended)
+# Create a dedicated group for Thunderbird devices (once per system)
+sudo groupadd -f thunderbird
+
+# Grant read/write to the thunderbird group only (not world-writable)
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="XXXX", GROUP="thunderbird", MODE="0660"' | \
     sudo tee /etc/udev/rules.d/99-thunderbird.rules
+
+# Reload udev rules
 sudo udevadm control --reload-rules
+
+# Add your user to the thunderbird group (log out/in afterward)
+sudo usermod -aG thunderbird "$USER"
 ```
 
 ---
