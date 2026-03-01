@@ -100,7 +100,21 @@ struct LoggingConfig {
     // ── Pattern overrides (empty = use defaults) ────────────────────────
     /// Console / file pattern  (default: "[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v")
     std::string pattern;
-    /// JSON pattern (default: R"({"ts":"%Y-%m-%dT%H:%M:%S.%eZ","level":"%l","module":"%n","msg":"%v"})")
+    /// JSON metadata pattern.
+    ///
+    /// NOTE:
+    ///   - This pattern is intended for JSON *metadata fields only* (timestamp,
+    ///     level, module, etc.).
+    ///   - It MUST NOT embed the message (`%v`) inside JSON string quotes,
+    ///     because spdlog does not JSON-escape `%v`. Doing so would produce
+    ///     invalid JSON for messages containing quotes, backslashes, or
+    ///     newlines.
+    ///   - The default pattern therefore excludes the message field entirely;
+    ///     the JSON sink/formatter is responsible for adding `"msg"` with a
+    ///     properly escaped value.
+    ///
+    /// Default:
+    ///   R"({"ts":"%Y-%m-%dT%H:%M:%S.%eZ","level":"%l","module":"%n"})"
     std::string json_pattern;
 };
 
