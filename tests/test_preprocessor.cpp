@@ -31,26 +31,6 @@ using namespace thunderbird::odom;
 //  Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Create a cloud with N points arranged in a uniform grid on a flat plane
-/// at z = ground_z.
-static std::shared_ptr<const PointCloudFrame>
-makeGroundPlane(int nx, int ny, double spacing, double ground_z) {
-    auto cloud = std::make_shared<PointCloudFrame>();
-    cloud->timestamp_ns = 1'000'000'000;
-    cloud->is_deskewed  = true;
-    for (int i = 0; i < nx; ++i) {
-        for (int j = 0; j < ny; ++j) {
-            PointXYZIT p;
-            p.x = static_cast<float>(i * spacing - nx * spacing * 0.5);
-            p.y = static_cast<float>(j * spacing - ny * spacing * 0.5);
-            p.z = static_cast<float>(ground_z);
-            p.intensity = 50.0f;
-            cloud->points.push_back(p);
-        }
-    }
-    return cloud;
-}
-
 /// Create a cloud with a ground plane + an above-ground blob.
 static std::shared_ptr<PointCloudFrame>
 makeGroundPlusBlob(double ground_z, double blob_cx, double blob_cy,
