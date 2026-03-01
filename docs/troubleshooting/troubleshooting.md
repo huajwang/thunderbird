@@ -102,7 +102,9 @@ thunderbird::logging::set_module_level(
 
 1. **Diagnostics JSON** — call `device.diagnostics_json()` and include the
    output in any bug report.
-2. **Log file** — reproduce with `file_level = trace` and attach the log.
+2. **Log file** — reproduce with logging configured for trace-level file
+   output (for example, `level = spdlog::level::trace`, `file_enabled = true`,
+   and a suitable `file_path`), then attach the resulting log file.
 3. **Recording** — capture a `.tbrec` session so maintainers can replay.
 4. **GitHub Issues** — file at
    `https://github.com/huajwang/thunderbird/issues` with logs, config,
