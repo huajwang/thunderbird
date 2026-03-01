@@ -2,6 +2,7 @@
 // Thunderbird SDK — acme_slamd: SLAM Daemon Implementation
 // ─────────────────────────────────────────────────────────────────────────────
 #include "acme_slamd.h"
+#include "thunderbird/lidar_frame_assembler.h"
 
 #include <algorithm>
 #include <atomic>
@@ -800,16 +801,32 @@ bool SlamDaemon::start() {
         d.engine->feedImu(os, host_ns);
     });
 
+    // ── Wire LiDAR frame assembler for full-sweep point clouds ────────
+    // Instead of feeding per-packet LidarFrames (50-200 pts) directly to
+    // SLAM, accumulate them into full 360° sweeps (~28K pts) via the
+    // DeviceManager's frame assembler.
+    d.device->frame_assembler().on_frame(
+        [&d](std::shared_ptr<const odom::PointCloudFrame> cloud,
+             const FrameAssemblyMeta& /*meta*/) {
+            auto host_ns = duration_cast<nanoseconds>(
+                clock_t::now().time_since_epoch()).count();
+            d.engine->feedPointCloud(std::move(cloud), host_ns);
+        });
+
     d.device->on_lidar([&d](std::shared_ptr<const LidarFrame> f) {
-        auto cloud = std::make_shared<odom::PointCloudFrame>();
-        cloud->timestamp_ns = f->timestamp.nanoseconds;
-        cloud->points.reserve(f->points.size());
-        for (const auto& p : f->points) {
-            cloud->points.push_back({p.x, p.y, p.z, p.intensity, 0});
+        // Feed per-packet data into the frame assembler.
+        // Azimuth information is not available from PacketParser lidar
+        // output, so use estimated azimuth from point cloud geometry.
+        float az_start = 0.0f, az_end = 0.0f;
+        if (!f->points.empty()) {
+            az_start = std::atan2(f->points.front().y,
+                                  f->points.front().x) * 180.0f / 3.14159265f;
+            az_end   = std::atan2(f->points.back().y,
+                                  f->points.back().x) * 180.0f / 3.14159265f;
+            if (az_start < 0) az_start += 360.0f;
+            if (az_end < 0)   az_end += 360.0f;
         }
-        auto host_ns = duration_cast<nanoseconds>(
-            clock_t::now().time_since_epoch()).count();
-        d.engine->feedPointCloud(std::move(cloud), host_ns);
+        d.device->frame_assembler().feed(f, az_start, az_end);
     });
 
     // ── 4. Wire engine callbacks → IPC ──────────────────────────────────

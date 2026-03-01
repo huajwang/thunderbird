@@ -178,12 +178,11 @@ int main() {
     // Let the I/O thread process remaining data.
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    // ── 8. Print parser stats ───────────────────────────────────────────────
-    auto stats = conn_mgr->parser_stats();
-    std::printf("\n── Parser stats ─────────────────────\n");
+    // ── 8. Print decoder stats ─────────────────────────────────────────────
+    auto stats = conn_mgr->decoder_stats();
+    std::printf("\n── Decoder stats ────────────────────\n");
     std::printf("  packets parsed : %llu\n", (unsigned long long)stats.packets_parsed);
-    std::printf("  CRC errors     : %llu\n", (unsigned long long)stats.crc_errors);
-    std::printf("  resync count   : %llu\n", (unsigned long long)stats.resync_count);
+    std::printf("  checksum errors: %llu\n", (unsigned long long)stats.checksum_errors);
     std::printf("  bytes processed: %llu\n", (unsigned long long)stats.bytes_processed);
 
     // ── 9. Cleanup ──────────────────────────────────────────────────────────

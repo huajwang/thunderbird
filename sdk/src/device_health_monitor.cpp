@@ -11,10 +11,10 @@ namespace thunderbird {
 // ─── Construction / destruction ─────────────────────────────────────────────
 
 DeviceHealthMonitor::DeviceHealthMonitor(ConnectionManager& conn_mgr,
-                                         PacketParser& parser,
+                                         IPacketDecoder& decoder,
                                          DeviceHealthConfig config)
     : conn_mgr_(conn_mgr)
-    , parser_(parser)
+    , decoder_(decoder)
     , cfg_(std::move(config))
 {
     // Initialise rate detectors.
@@ -228,11 +228,11 @@ void DeviceHealthMonitor::tick() {
     if (first_tick_) {
         first_tick_ = false;
         // Seed stall detector with current byte count.
-        auto stats = parser_.stats();
-        stall_.last_bytes_processed = stats.bytes_processed;
+        auto dstats = decoder_.stats();
+        stall_.last_bytes_processed = dstats.bytes_processed;
         stall_.last_data_seen_ns = ts_ns;
-        crc_.prev_crc_errors = stats.crc_errors;
-        crc_.prev_packets = stats.packets_parsed;
+        crc_.prev_crc_errors = dstats.checksum_errors;
+        crc_.prev_packets = dstats.packets_parsed;
         return;
     }
 
@@ -243,16 +243,16 @@ void DeviceHealthMonitor::tick() {
     const uint64_t imu_delta    = imu_count_.exchange(0, std::memory_order_relaxed);
     const uint64_t camera_delta = camera_count_.exchange(0, std::memory_order_relaxed);
 
-    // ── 3. Sample ParserStats ───────────────────────────────────────────
-    const ParserStats stats = parser_.stats();
+    // ── 3. Sample DecoderStats ───────────────────────────────────────────
+    const DecoderStats dstats = decoder_.stats();
 
     // ── 4. Run detectors ────────────────────────────────────────────────
     if (cfg_.lidar_enabled)  rate_lidar_.update(lidar_delta, dt_s);
     if (cfg_.imu_enabled)    rate_imu_.update(imu_delta, dt_s);
     if (cfg_.camera_enabled) rate_camera_.update(camera_delta, dt_s);
 
-    stall_.update(stats.bytes_processed, ts_ns);
-    crc_.update(stats.crc_errors, stats.packets_parsed);
+    stall_.update(dstats.bytes_processed, ts_ns);
+    crc_.update(dstats.checksum_errors, dstats.packets_parsed);
     flap_.update(ts_ns);
 
     // Heartbeat RTT detector.
@@ -287,9 +287,9 @@ void DeviceHealthMonitor::tick() {
     snap.lidar_rate_score = rate_lidar_.score;
     snap.imu_rate_score   = rate_imu_.score;
     snap.camera_rate_score = rate_camera_.score;
-    snap.bytes_total      = stats.bytes_processed;
-    snap.packets_total    = stats.packets_parsed;
-    snap.crc_errors_total = stats.crc_errors;
+    snap.bytes_total      = dstats.bytes_processed;
+    snap.packets_total    = dstats.packets_parsed;
+    snap.crc_errors_total = dstats.checksum_errors;
     snap.crc_error_rate   = crc_.error_rate;
     snap.stall_duration_ms = stall_.stall_duration_ms;
     snap.stall_score      = stall_.score;

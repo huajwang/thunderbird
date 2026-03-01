@@ -6,6 +6,8 @@
 #include "thunderbird/time_sync.h"
 #include "thunderbird/data_layer.h"
 #include "thunderbird/device_health_monitor.h"
+#include "thunderbird/clock_service.h"
+#include "thunderbird/lidar_frame_assembler.h"
 
 // Simulated drivers
 #include "thunderbird/drivers/simulated_lidar.h"
@@ -54,6 +56,12 @@ struct DeviceManager::Impl {
     // Device health monitor (hardware mode only)
     std::unique_ptr<DeviceHealthMonitor> health_monitor;
 
+    // Clock service (unified clock authority)
+    ClockService clock_service;
+
+    // LiDAR frame assembler (per-packet → full sweep)
+    LidarFrameAssembler frame_assembler;
+
     // Data Abstraction Layer (Pull + Callback API)
     data::DataLayer data_layer;
 
@@ -61,6 +69,8 @@ struct DeviceManager::Impl {
         : config(std::move(cfg)),
           sync_engine(config.sync),
           time_sync_engine(config.time_sync),
+          clock_service(config.clock),
+          frame_assembler(config.frame_assembler),
           data_layer(data::DataLayerConfig{}) {}
 };
 
@@ -184,10 +194,18 @@ Status DeviceManager::connect() {
         hcfg.expected_camera_fps = impl_->config.camera_fps;
 
         auto& cmgr = impl_->hw_driver->connection();
-        auto& prs  = cmgr.parser();
+
+        // Wire the clock service observation hook into the decoder.
+        auto* native_parser = dynamic_cast<PacketParser*>(&cmgr.decoder());
+        if (native_parser) {
+            native_parser->set_clock_observe(
+                [this](int64_t hw_ns, int64_t host_ns) {
+                    impl_->clock_service.observe(hw_ns, host_ns);
+                });
+        }
 
         impl_->health_monitor = std::make_unique<DeviceHealthMonitor>(
-            cmgr, prs, hcfg);
+            cmgr, cmgr.decoder(), hcfg);
     }
 
     // Create facade drivers that the rest of DeviceManager expects.
@@ -334,6 +352,26 @@ DeviceHealthState DeviceManager::device_health() const {
     if (impl_->health_monitor)
         return impl_->health_monitor->state();
     return DeviceHealthState::Disconnected;
+}
+
+// ─── Clock Service ─────────────────────────────────────────────────────────────────
+
+ClockService& DeviceManager::clock_service() {
+    return impl_->clock_service;
+}
+
+const ClockService& DeviceManager::clock_service() const {
+    return impl_->clock_service;
+}
+
+// ─── LiDAR Frame Assembler ─────────────────────────────────────────────────────────
+
+LidarFrameAssembler& DeviceManager::frame_assembler() {
+    return impl_->frame_assembler;
+}
+
+const LidarFrameAssembler& DeviceManager::frame_assembler() const {
+    return impl_->frame_assembler;
 }
 
 } // namespace thunderbird

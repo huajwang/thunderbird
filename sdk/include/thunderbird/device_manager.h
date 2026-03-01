@@ -26,6 +26,8 @@
 #include "thunderbird/data_layer.h"
 #include "thunderbird/time_sync.h"
 #include "thunderbird/device_health_monitor.h"
+#include "thunderbird/clock_service.h"
+#include "thunderbird/lidar_frame_assembler.h"
 
 #include <memory>
 #include <string>
@@ -58,6 +60,12 @@ struct DeviceConfig {
 
     /// Retry / reconnect policy.
     RetryConfig retry;
+
+    /// Clock synchronization configuration.
+    ClockServiceConfig clock;
+
+    /// LiDAR frame assembler configuration.
+    FrameAssemblerConfig frame_assembler;
 };
 
 class DeviceManager {
@@ -126,6 +134,18 @@ public:
 
     /// Convenience: current device health state.
     DeviceHealthState device_health() const;
+
+    // ── Clock Service ────────────────────────────────────────────────────────
+
+    /// Access the unified clock service.
+    ClockService& clock_service();
+    const ClockService& clock_service() const;
+
+    // ── LiDAR Frame Assembler ────────────────────────────────────────────────
+
+    /// Access the frame assembler.
+    LidarFrameAssembler& frame_assembler();
+    const LidarFrameAssembler& frame_assembler() const;
 
     // ── Statistics ──────────────────────────────────────────────────────────
 

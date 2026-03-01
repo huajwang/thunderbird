@@ -33,7 +33,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 
+#include "thunderbird/packet_decoder.h"
 #include "thunderbird/protocol.h"
+#include "thunderbird/sequence_tracker.h"
 #include "thunderbird/types.h"
 
 #include <cstring>
@@ -62,36 +64,40 @@ struct ParserStats {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-class PacketParser {
+class PacketParser : public IPacketDecoder {
 public:
     PacketParser() { buf_.reserve(64 * 1024); } // pre-allocate 64 KB
 
-    // ── Register callbacks ──────────────────────────────────────────────────
+    // ── Register callbacks (control-only extension; sensor callbacks in base) ─
 
-    void on_lidar(LidarCallback cb)       { lidar_cb_   = std::move(cb); }
-    void on_imu(ImuCallback cb)           { imu_cb_     = std::move(cb); }
-    void on_camera(CameraCallback cb)     { camera_cb_  = std::move(cb); }
     void on_control(ControlCallback cb)   { control_cb_ = std::move(cb); }
 
-    // ── Feed raw bytes ──────────────────────────────────────────────────────
+    // ── IPacketDecoder overrides ────────────────────────────────────────────
 
-    /// Append raw bytes from the transport and parse as many complete packets
-    /// as possible.  Safe to call with partial data; leftover bytes are
-    /// retained for the next call.
-    void feed(const uint8_t* data, size_t len) {
+    /// Feed raw bytes
+    void feed(const uint8_t* data, size_t len) override {
         buf_.insert(buf_.end(), data, data + len);
         stats_.bytes_processed += len;
+        decoder_stats_.bytes_processed += len;
 
         // Process all complete packets in the buffer.
         while (try_parse_one()) { /* keep going */ }
     }
 
     /// Reset internal buffer (e.g. after a reconnect).
-    void reset() {
+    void reset() override {
         buf_.clear();
+        lidar_seq_.reset();
+        imu_seq_.reset();
+        camera_seq_.reset();
     }
 
-    const ParserStats& stats() const { return stats_; }
+    const DecoderStats& stats() const override { return decoder_stats_; }
+
+    const char* decoder_name() const override { return "Thunderbird native"; }
+
+    /// Legacy accessor for backward compatibility.
+    const ParserStats& parser_stats() const { return stats_; }
 
 private:
     // ── Core parse loop ─────────────────────────────────────────────────────
@@ -118,6 +124,7 @@ private:
             // Discard bytes before the magic (junk / desync data).
             buf_.erase(buf_.begin(), buf_.begin() + static_cast<ptrdiff_t>(offset));
             ++stats_.resync_count;
+            ++decoder_stats_.resync_count;
         }
 
         if (buf_.size() < protocol::kHeaderSize)
@@ -132,6 +139,7 @@ private:
             // Unknown version — skip these two magic bytes and try again.
             buf_.erase(buf_.begin(), buf_.begin() + 2);
             ++stats_.resync_count;
+            ++decoder_stats_.resync_count;
             return true; // retry
         }
 
@@ -139,6 +147,7 @@ private:
             // Corrupt length — skip magic and resync.
             buf_.erase(buf_.begin(), buf_.begin() + 2);
             ++stats_.resync_count;
+            ++decoder_stats_.resync_count;
             return true;
         }
 
@@ -151,8 +160,10 @@ private:
         if (!protocol::Crc32::validate(buf_.data(), total)) {
             // CRC failure — skip magic and resync.
             ++stats_.crc_errors;
+            ++decoder_stats_.checksum_errors;
             buf_.erase(buf_.begin(), buf_.begin() + 2);
             ++stats_.resync_count;
+            ++decoder_stats_.resync_count;
             return true;
         }
 
@@ -162,6 +173,7 @@ private:
 
         dispatch(hdr, payload_ptr, payload_len);
         ++stats_.packets_parsed;
+        ++decoder_stats_.packets_parsed;
 
         // Remove consumed bytes.
         buf_.erase(buf_.begin(), buf_.begin() + static_cast<ptrdiff_t>(total));
@@ -188,23 +200,38 @@ private:
     void dispatch(const protocol::PacketHeader& hdr,
                   const uint8_t* payload, uint32_t payload_len)
     {
-        Timestamp host_ts = Timestamp::now();
+        Timestamp host_ts = host_timestamp();
         Timestamp hw_ts{hdr.hw_timestamp_ns};
+
+        // Feed clock service observation if available.
+        if (clock_service_observe_fn_ && hdr.hw_timestamp_ns != 0) {
+            clock_service_observe_fn_(hw_ts.nanoseconds, host_ts.nanoseconds);
+        }
+
         auto ptype = static_cast<protocol::PacketType>(hdr.payload_type);
 
         switch (ptype) {
 
-        case protocol::PacketType::LidarScan:
+        case protocol::PacketType::LidarScan: {
+            uint32_t dropped = lidar_seq_.update(hdr.sequence);
+            decoder_stats_.packets_dropped += dropped;
             dispatch_lidar(hdr, hw_ts, host_ts, payload, payload_len);
             break;
+        }
 
-        case protocol::PacketType::ImuSample:
+        case protocol::PacketType::ImuSample: {
+            uint32_t dropped = imu_seq_.update(hdr.sequence);
+            decoder_stats_.packets_dropped += dropped;
             dispatch_imu(hdr, hw_ts, host_ts, payload, payload_len);
             break;
+        }
 
-        case protocol::PacketType::CameraFrame:
+        case protocol::PacketType::CameraFrame: {
+            uint32_t dropped = camera_seq_.update(hdr.sequence);
+            decoder_stats_.packets_dropped += dropped;
             dispatch_camera(hdr, hw_ts, host_ts, payload, payload_len);
             break;
+        }
 
         default:
             // Control / handshake / heartbeat / unknown
@@ -307,12 +334,24 @@ private:
     // ── State ───────────────────────────────────────────────────────────────
 
     std::vector<uint8_t> buf_;       // accumulation buffer
-    ParserStats          stats_{};
+    ParserStats          stats_{};   // legacy stats
+    DecoderStats         decoder_stats_{}; // full decoder stats
 
-    LidarCallback   lidar_cb_;
-    ImuCallback     imu_cb_;
-    CameraCallback  camera_cb_;
+    // Sensor callbacks are in IPacketDecoder base class.
     ControlCallback control_cb_;
+
+    // Per-channel sequence trackers for packet-loss detection.
+    SequenceTracker lidar_seq_;
+    SequenceTracker imu_seq_;
+    SequenceTracker camera_seq_;
+
+public:
+    // ── Clock service observation hook ─────────────────────────────────────
+    using ClockObserveFn = std::function<void(int64_t hw_ns, int64_t host_ns)>;
+    void set_clock_observe(ClockObserveFn fn) { clock_service_observe_fn_ = std::move(fn); }
+
+private:
+    ClockObserveFn clock_service_observe_fn_;
 };
 
 } // namespace thunderbird

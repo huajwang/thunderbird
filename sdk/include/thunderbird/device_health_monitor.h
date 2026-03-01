@@ -26,6 +26,7 @@
 #pragma once
 
 #include "thunderbird/connection_manager.h"
+#include "thunderbird/packet_decoder.h"
 #include "thunderbird/packet_parser.h"
 #include "thunderbird/types.h"
 
@@ -398,9 +399,9 @@ struct HeartbeatJitterDetector {
 class DeviceHealthMonitor {
 public:
     /// Construct with references to existing infrastructure.
-    /// Does NOT take ownership of conn_mgr or parser.
+    /// Does NOT take ownership of conn_mgr or decoder.
     explicit DeviceHealthMonitor(ConnectionManager& conn_mgr,
-                                  PacketParser& parser,
+                                  IPacketDecoder& decoder,
                                   DeviceHealthConfig config = {});
     ~DeviceHealthMonitor();
 
@@ -465,7 +466,7 @@ private:
 
     // --- References (non-owning) ---
     ConnectionManager&  conn_mgr_;
-    PacketParser&       parser_;
+    IPacketDecoder&     decoder_;
     DeviceHealthConfig  cfg_;
 
     // --- Per-sensor atomic counters (incremented on I/O thread) ---

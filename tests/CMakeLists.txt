@@ -69,3 +69,7 @@ add_test(NAME KalmanHungarian COMMAND test_kalman_hungarian)
 add_executable(test_device_health_monitor test_device_health_monitor.cpp)
 target_link_libraries(test_device_health_monitor PRIVATE thunderbird_sdk Threads::Threads)
 add_test(NAME DeviceHealthMonitor COMMAND test_device_health_monitor)
+
+add_executable(test_phase2_hw_integration test_phase2_hw_integration.cpp)
+target_link_libraries(test_phase2_hw_integration PRIVATE thunderbird_sdk)
+add_test(NAME Phase2HwIntegration COMMAND test_phase2_hw_integration)

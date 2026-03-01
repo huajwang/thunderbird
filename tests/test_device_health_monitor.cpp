@@ -100,7 +100,7 @@ struct TestFixture {
         auto transport = std::make_unique<NullTransport>();
         conn_mgr = std::make_unique<ConnectionManager>(std::move(transport));
         monitor = std::make_unique<DeviceHealthMonitor>(
-            *conn_mgr, conn_mgr->parser(), cfg);
+            *conn_mgr, conn_mgr->decoder(), cfg);
     }
 };
 
