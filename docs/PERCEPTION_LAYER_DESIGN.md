@@ -87,7 +87,7 @@
  │  │                                                                      │   │
  │  │  1. Hungarian / greedy association (IoU-3D + Mahalanobis)            │   │
  │  │  2. Per-object Kalman filter (constant-velocity or CTRV)             │   │
- │  │  3. Track lifecycle: Tentative → Confirmed → Lost → Deleted          │   │
+ │  │  3. Track lifecycle: Tentative → Confirmed → Coasting → Deleted      │   │
  │  │  4. Publish TrackedObjectList into output_ring_                      │   │
  │  │                                                                      │   │
  │  └──────────┬───────────────────────────────────────────────────────────┘   │
