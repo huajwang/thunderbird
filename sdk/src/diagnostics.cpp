@@ -12,6 +12,33 @@
 #include <thread>
 #include <vector>
 
+namespace {
+
+/// Escape a string for JSON output (handles quotes, backslashes, control chars).
+void json_escape(std::ostream& os, const std::string& s) {
+    for (char c : s) {
+        switch (c) {
+            case '"':  os << "\\\""; break;
+            case '\\': os << "\\\\"; break;
+            case '\b': os << "\\b"; break;
+            case '\f': os << "\\f"; break;
+            case '\n': os << "\\n"; break;
+            case '\r': os << "\\r"; break;
+            case '\t': os << "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+                    os << buf;
+                } else {
+                    os << c;
+                }
+        }
+    }
+}
+
+} // anonymous namespace
+
 namespace thunderbird {
 THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
@@ -56,29 +83,6 @@ DiagnosticsSnapshot DiagnosticsSnapshot::compute_rates(
         }
     }
     return result;
-}
-
-/// Escape a string for JSON output (handles quotes, backslashes, control chars).
-static void json_escape(std::ostream& os, const std::string& s) {
-    for (char c : s) {
-        switch (c) {
-            case '"':  os << "\\\""; break;
-            case '\\': os << "\\\\"; break;
-            case '\b': os << "\\b"; break;
-            case '\f': os << "\\f"; break;
-            case '\n': os << "\\n"; break;
-            case '\r': os << "\\r"; break;
-            case '\t': os << "\\t"; break;
-            default:
-                if (static_cast<unsigned char>(c) < 0x20) {
-                    char buf[8];
-                    std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
-                    os << buf;
-                } else {
-                    os << c;
-                }
-        }
-    }
 }
 
 std::string DiagnosticsSnapshot::to_json() const {

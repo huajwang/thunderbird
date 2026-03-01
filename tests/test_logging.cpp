@@ -10,7 +10,7 @@
 //   5. get() returns non-null for all modules after init
 //   6. get_by_index() bounds checking
 //   7. Macro compilation (TB_LOG_INFO, TB_LOG_WARN_ONCE, TB_LOG_DEBUG_EVERY_N)
-//   8. shutdown() makes get() return nullptr-equivalent (no crash)
+//   8. shutdown() nulls loggers and get() returns nullptr
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -110,6 +110,18 @@ static void test_flush_no_crash() {
     std::printf("OK\n");
 }
 
+static void test_shutdown() {
+    std::printf("  shutdown() ... ");
+    // After shutdown, get() must return nullptr for every module.
+    tbl::shutdown();
+    for (std::size_t i = 0; i < tbl::kModuleCount; ++i) {
+        VERIFY(tbl::get(static_cast<tbl::Module>(i)) == nullptr);
+    }
+    // Macros must not crash even after shutdown (they null-check internally).
+    TB_LOG_INFO(tbl::Module::Core, "after shutdown {}", 99);
+    std::printf("OK\n");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -122,6 +134,7 @@ int main() {
     test_global_level();
     test_macros_compile_and_run();
     test_flush_no_crash();
+    test_shutdown();  // Must be last — destroys loggers
 
     std::printf("All logging tests passed.\n");
     return 0;

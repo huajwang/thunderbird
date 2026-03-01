@@ -99,8 +99,9 @@
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define TB_LOG_EVERY_N(level_val, level_enum, mod, n, ...)                     \
     do {                                                                        \
-        static uint64_t _tb_log_ctr_ = 0;                                      \
-        if ((++_tb_log_ctr_) % (n) == 0) {                                     \
+        static_assert((n) > 0, "TB_LOG_EVERY_N: n must be > 0");              \
+        thread_local uint64_t _tb_log_ctr_ = 0;                                \
+        if ((++_tb_log_ctr_) % static_cast<uint64_t>(n) == 0) {                \
             TB_LOG_IMPL_(level_val, level_enum, mod, __VA_ARGS__);              \
         }                                                                       \
     } while (0)

@@ -2,8 +2,16 @@
 
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
+find_dependency(spdlog)
 
 include("${CMAKE_CURRENT_LIST_DIR}/ThunderbirdSDKTargets.cmake")
+
+# spdlog is a FetchContent dep at build time (BUILD_INTERFACE only),
+# so we must append it for installed consumers who find it on their system.
+if(TARGET Thunderbird::thunderbird_sdk AND TARGET spdlog::spdlog)
+    set_property(TARGET Thunderbird::thunderbird_sdk APPEND PROPERTY
+        INTERFACE_LINK_LIBRARIES spdlog::spdlog)
+endif()
 
 # Provide convenience aliases
 if(NOT TARGET Thunderbird::SDK)

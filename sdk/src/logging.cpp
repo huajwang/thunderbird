@@ -5,6 +5,7 @@
 
 #include <spdlog/spdlog.h>
 #include <spdlog/async.h>
+#include <spdlog/pattern_formatter.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/stdout_sinks.h>
 #include <spdlog/sinks/rotating_file_sink.h>
@@ -34,7 +35,7 @@ static constexpr const char* kDefaultPattern =
     "[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v";
 
 static constexpr const char* kDefaultJsonPattern =
-    R"({"ts":"%Y-%m-%dT%H:%M:%S.%eZ","level":"%l","module":"%n","msg":"%v"})";
+    R"({"ts":"%Y-%m-%dT%H:%M:%S.%e","level":"%l","module":"%n","msg":"%v"})";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -75,7 +76,10 @@ build_sinks(const LoggingConfig& cfg,
             cfg.json_path,
             cfg.json_max_size,
             cfg.json_max_files);
-        json_sink->set_pattern(json_pattern);
+        // Use UTC time for JSON logs so timestamps are unambiguous.
+        json_sink->set_formatter(
+            std::make_unique<spdlog::pattern_formatter>(
+                json_pattern, spdlog::pattern_time_type::utc));
         sinks.push_back(std::move(json_sink));
     }
 
