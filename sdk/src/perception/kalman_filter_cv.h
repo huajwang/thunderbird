@@ -356,8 +356,8 @@ public:
     [[nodiscard]] const double* covariance() const noexcept { return P_; }
 
     /// Copy the 7×7 covariance into user-provided buffer.
-    void copyCovariance(double out[49]) const noexcept {
-        std::memcpy(out, P_, sizeof(P_));
+    void copyCovariance(std::array<double, 49>& out) const noexcept {
+        std::memcpy(out.data(), P_, sizeof(P_));
     }
 
 private:

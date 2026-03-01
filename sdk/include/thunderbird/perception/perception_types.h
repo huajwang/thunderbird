@@ -160,7 +160,7 @@ struct TrackedObject {
     int         consecutive_misses{0};   ///< current coast streak
 
     /// 7×7 covariance (x, y, z, yaw, vx, vy, vz) row-major
-    double      covariance[49]{};
+    std::array<double, 49> covariance{};
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
