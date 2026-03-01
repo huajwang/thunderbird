@@ -32,6 +32,7 @@
 #include <vector>
 
 namespace thunderbird::perception {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  GpuPillarDetector — PointPillars via TensorRT FP16
@@ -189,6 +190,7 @@ DetectionFrame GpuCenterPointDetector::detect(const DetectionInput& input) {
     return result;
 }
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::perception
 
 #endif // THUNDERBIRD_HAS_GPU_PERCEPTION

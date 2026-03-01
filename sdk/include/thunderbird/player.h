@@ -68,7 +68,11 @@
 #include <thread>
 #include <vector>
 
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
+
 namespace thunderbird::data {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
@@ -191,4 +195,5 @@ private:
     PlayerStats         stats_;
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::data

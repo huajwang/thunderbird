@@ -4,10 +4,13 @@
 #pragma once
 
 #include "thunderbird/types.h"
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
 #include <cstddef>
 #include <string>
 
 namespace thunderbird {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ─── Timestamped read result ────────────────────────────────────────────────
 
@@ -20,7 +23,7 @@ struct ReadResult {
 
 /// Abstract byte-level transport for device communication.
 /// Concrete implementations: USB, Ethernet/UDP, or simulated loopback.
-class ITransport {
+class THUNDERBIRD_API ITransport {
 public:
     virtual ~ITransport() = default;
 
@@ -50,4 +53,5 @@ public:
     }
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird

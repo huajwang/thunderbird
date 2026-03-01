@@ -21,12 +21,15 @@
 #pragma once
 
 #include "thunderbird/types.h"
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
 
 namespace thunderbird {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ─── Decoder statistics ─────────────────────────────────────────────────────
 
@@ -106,4 +109,5 @@ private:
     int64_t rx_timestamp_ns_{0};
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird

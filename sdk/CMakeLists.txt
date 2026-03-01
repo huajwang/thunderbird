@@ -12,7 +12,22 @@ target_include_directories(thunderbird_sdk_objects
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
 )
-target_link_libraries(thunderbird_sdk_objects PUBLIC Threads::Threads)
+target_link_libraries(thunderbird_sdk_objects PUBLIC Threads::Threads spdlog::spdlog)
+
+# ── Symbol visibility: hide everything by default, export only THUNDERBIRD_API ──
+if(NOT MSVC)
+    target_compile_options(thunderbird_sdk_objects PRIVATE
+        -fvisibility=hidden -fvisibility-inlines-hidden)
+endif()
+target_compile_definitions(thunderbird_sdk_objects PRIVATE THUNDERBIRD_SDK_EXPORTS)
+
+# ── Compile-time log level stripping ────────────────────────────────────────
+# Override with: cmake -DTHUNDERBIRD_LOG_LEVEL_COMPILE=2 ..
+# Values: 0=trace 1=debug 2=info 3=warn 4=error 5=critical 6=off
+if(DEFINED THUNDERBIRD_LOG_LEVEL_COMPILE)
+    target_compile_definitions(thunderbird_sdk_objects PUBLIC
+        THUNDERBIRD_LOG_LEVEL_COMPILE=${THUNDERBIRD_LOG_LEVEL_COMPILE})
+endif()
 if(WIN32)
     target_link_libraries(thunderbird_sdk_objects PUBLIC Psapi)
 endif()
@@ -79,7 +94,8 @@ target_include_directories(thunderbird_sdk
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(thunderbird_sdk PUBLIC Threads::Threads)
+target_link_libraries(thunderbird_sdk PUBLIC Threads::Threads PRIVATE $<BUILD_INTERFACE:spdlog::spdlog>)
+target_compile_definitions(thunderbird_sdk INTERFACE THUNDERBIRD_SDK_STATIC)
 if(THUNDERBIRD_USE_SIMULATED)
     target_compile_definitions(thunderbird_sdk PUBLIC THUNDERBIRD_SIMULATED=1)
 endif()
@@ -99,7 +115,7 @@ target_include_directories(thunderbird_sdk_shared
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(thunderbird_sdk_shared PUBLIC Threads::Threads)
+target_link_libraries(thunderbird_sdk_shared PUBLIC Threads::Threads PRIVATE $<BUILD_INTERFACE:spdlog::spdlog>)
 if(THUNDERBIRD_USE_SIMULATED)
     target_compile_definitions(thunderbird_sdk_shared PUBLIC THUNDERBIRD_SIMULATED=1)
 endif()

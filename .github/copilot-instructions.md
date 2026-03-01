@@ -304,13 +304,15 @@ See `SECURITY.md` for vulnerability reporting policy.
 - Lock-free RingBuffer, SyncEngine, DeviceManager (PImpl)
 - C++ examples, unit tests, ROS 2 bridge, Python bindings
 
-### Phase 2 — Hardware integration (next)
-- Real USB/Ethernet transport drivers
-- Vendor-specific packet parsing
-- Hardware PTP/PPS timestamp recovery
-- Clock-offset estimation, reconnection/watchdog
+### Phase 2 — Hardware integration ✅
+- Real USB/Ethernet transport drivers (SO_TIMESTAMPING)
+- Vendor-specific packet parsing (IPacketDecoder, DecoderFactory, VLP-16)
+- Hardware PTP/PPS timestamp recovery (ClockService)
+- Clock-offset estimation, LidarFrameAssembler
+- Device health monitoring (DeviceHealthMonitor)
+- Reconnection/watchdog
 
-### Phase 3 — Production hardening
+### Phase 3 — Production hardening (next)
 - Configurable logging (spdlog)
 - Thread-safe diagnostics
 - API versioning & ABI stability

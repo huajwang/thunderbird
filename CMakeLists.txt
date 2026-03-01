@@ -46,6 +46,28 @@ endif()
 # ── Dependencies ─────────────────────────────────────────────────────────────
 find_package(Threads REQUIRED)
 
+# ── spdlog (structured logging) ─────────────────────────────────────────────
+# Strategy: try find_package first (system / vcpkg / Conan), then fall back to
+# FetchContent for a hermetic build — same pattern as pybind11.
+find_package(spdlog QUIET)
+if(NOT spdlog_FOUND)
+    message(STATUS "spdlog not found locally — fetching via FetchContent")
+    include(FetchContent)
+    FetchContent_Declare(
+        spdlog
+        URL      https://github.com/gabime/spdlog/archive/refs/tags/v1.15.1.tar.gz
+    )
+    # Build spdlog as a static library (header-only also works but we want
+    # a single compilation unit to keep build times short).
+    set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+    set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(spdlog)
+else()
+    message(STATUS "spdlog found: ${spdlog_VERSION}")
+endif()
+
 # ── SDK core library ─────────────────────────────────────────────────────────
 add_subdirectory(sdk)
 

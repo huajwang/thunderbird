@@ -32,7 +32,11 @@
 #include <memory>
 #include <vector>
 
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
+
 namespace thunderbird::perception {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  DetectionInput — preprocessed data passed to the detector
@@ -69,7 +73,7 @@ struct DetectionInput {
 //  ObjectDetector — abstract interface
 // ═════════════════════════════════════════════════════════════════════════════
 
-class ObjectDetector {
+class THUNDERBIRD_API ObjectDetector {
 public:
     virtual ~ObjectDetector() = default;
 
@@ -132,4 +136,5 @@ public:
     static std::unique_ptr<ObjectDetector> create(const PerceptionConfig& config);
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::perception
