@@ -19,7 +19,7 @@ Detailed build instructions for all supported platforms and configurations.
 ## Standard Build
 
 ```bash
-git clone https://github.com/thunderbird-sdk/thunderbird.git
+git clone https://github.com/huajwang/thunderbird.git
 cd thunderbird
 
 cmake -B build -DCMAKE_BUILD_TYPE=Release
