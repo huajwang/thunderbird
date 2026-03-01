@@ -146,7 +146,7 @@ inline const char* track_state_name(TrackState s) noexcept {
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct TrackedObject {
-    uint64_t    track_id{0};            ///< unique, monotonic, never reused
+    uint64_t    track_id{0};            ///< monotonically increasing within a tracker session; may be reused after MultiObjectTracker::reset() or process restart
     TrackState  state{TrackState::Tentative};
     ObjectClass label{ObjectClass::Unknown};
     float       confidence{0};          ///< smoothed confidence

@@ -346,6 +346,12 @@ void PerceptionEngine::start() {
 void PerceptionEngine::stop() {
     if (!impl_->running.load(std::memory_order_relaxed)) return;
 
+    // Mark not-running FIRST so that feedSlamOutput() stops pushing
+    // into perception_ring before we join threads and drain buffers.
+    // This preserves the SPSC contract (single producer quiesced
+    // before consumer-side clear).
+    impl_->running.store(false, std::memory_order_release);
+
     impl_->shutdown_requested.store(true, std::memory_order_release);
 
     // Wake all threads so they can observe the shutdown flag.
@@ -358,16 +364,17 @@ void PerceptionEngine::stop() {
     if (impl_->t3_tracker.joinable())      impl_->t3_tracker.join();
 
     // Drain all ring buffers so a subsequent start() doesn't process
-    // stale frames that were enqueued while the pipeline was stopping.
-    impl_->perception_ring.clear();
-    impl_->detection_ring.clear();
-    impl_->tracking_ring.clear();
-    impl_->output_ring.clear();
-    impl_->detection_output_ring.clear();
+    // stale frames.  drain_and_reset() also releases the underlying
+    // shared_ptr slots (unlike a plain head/tail reset) so large
+    // point-cloud frames are freed immediately.
+    impl_->perception_ring.drain_and_reset();
+    impl_->detection_ring.drain_and_reset();
+    impl_->tracking_ring.drain_and_reset();
+    impl_->output_ring.drain_and_reset();
+    impl_->detection_output_ring.drain_and_reset();
 
     // Reset per-run rate limiting state so a subsequent start() begins cleanly.
     impl_->last_processed_ts = 0;
-    impl_->running.store(false, std::memory_order_release);
 }
 
 void PerceptionEngine::shutdown() {

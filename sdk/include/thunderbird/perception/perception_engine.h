@@ -208,7 +208,7 @@ public:
         double   avg_detection_ms{0};    ///< rolling average detection time
         double   avg_tracking_ms{0};     ///< rolling average tracking time
         double   avg_total_ms{0};        ///< rolling average end-to-end
-        uint32_t active_tracks{0};       ///< currently confirmed tracks
+        uint32_t active_tracks{0};       ///< currently active tracks (all states, incl. tentative/coasting)
         const char* detector_backend{""};///< active detector name
     };
 
