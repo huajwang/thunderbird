@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/async.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/stdout_sinks.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 
 #include <atomic>
@@ -37,19 +38,24 @@ static constexpr const char* kDefaultJsonPattern =
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/// Build the shared sink vector from config.
+/// Build the shared sink vector from config.  Non-JSON sinks get the
+/// console/file pattern applied; JSON sinks get their own structured pattern.
 static std::vector<spdlog::sink_ptr>
-build_sinks(const LoggingConfig& cfg, const std::string& json_pattern) {
+build_sinks(const LoggingConfig& cfg,
+            const std::string& pattern,
+            const std::string& json_pattern) {
     std::vector<spdlog::sink_ptr> sinks;
     sinks.reserve(3);
 
     // Console sink
     if (cfg.console_enabled) {
-        auto console = cfg.console_color
-            ? std::static_pointer_cast<spdlog::sinks::sink>(
-                  std::make_shared<spdlog::sinks::stdout_color_sink_mt>())
-            : std::static_pointer_cast<spdlog::sinks::sink>(
-                  std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
+        spdlog::sink_ptr console;
+        if (cfg.console_color) {
+            console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+        } else {
+            console = std::make_shared<spdlog::sinks::stdout_sink_mt>();
+        }
+        console->set_pattern(pattern);
         sinks.push_back(std::move(console));
     }
 
@@ -59,6 +65,7 @@ build_sinks(const LoggingConfig& cfg, const std::string& json_pattern) {
             cfg.file_path,
             cfg.max_file_size,
             cfg.max_files);
+        file_sink->set_pattern(pattern);
         sinks.push_back(std::move(file_sink));
     }
 
@@ -76,10 +83,10 @@ build_sinks(const LoggingConfig& cfg, const std::string& json_pattern) {
 }
 
 /// Create a single module logger (sync or async).
+/// Patterns are already set per-sink in build_sinks().
 static std::shared_ptr<spdlog::logger>
 make_logger(const char* name,
             const std::vector<spdlog::sink_ptr>& sinks,
-            const std::string& pattern,
             spdlog::level::level_enum level,
             bool async_mode) {
 
@@ -97,7 +104,6 @@ make_logger(const char* name,
     }
 
     logger->set_level(level);
-    logger->set_pattern(pattern);
 
     // Flush on warnings and above so that crash dumps contain recent output.
     logger->flush_on(spdlog::level::warn);
@@ -122,13 +128,13 @@ void init(const LoggingConfig& cfg) {
             spdlog::init_thread_pool(cfg.async_queue_size, cfg.async_threads);
         }
 
-        // Build shared sinks.
-        auto sinks = build_sinks(cfg, json_pattern);
+        // Build shared sinks (patterns applied per-sink).
+        auto sinks = build_sinks(cfg, pattern, json_pattern);
 
         // Create per-module loggers.
         for (std::size_t i = 0; i < kModuleCount; ++i) {
             g_loggers_owned[i] = make_logger(
-                kModuleNames[i], sinks, pattern, cfg.level, cfg.async);
+                kModuleNames[i], sinks, cfg.level, cfg.async);
             g_loggers[i] = g_loggers_owned[i].get();
         }
 

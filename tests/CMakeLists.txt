@@ -73,3 +73,11 @@ add_test(NAME DeviceHealthMonitor COMMAND test_device_health_monitor)
 add_executable(test_phase2_hw_integration test_phase2_hw_integration.cpp)
 target_link_libraries(test_phase2_hw_integration PRIVATE thunderbird_sdk)
 add_test(NAME Phase2HwIntegration COMMAND test_phase2_hw_integration)
+
+add_executable(test_logging test_logging.cpp)
+target_link_libraries(test_logging PRIVATE thunderbird_sdk)
+add_test(NAME Logging COMMAND test_logging)
+
+add_executable(test_diagnostics test_diagnostics.cpp)
+target_link_libraries(test_diagnostics PRIVATE thunderbird_sdk Threads::Threads)
+add_test(NAME Diagnostics COMMAND test_diagnostics)

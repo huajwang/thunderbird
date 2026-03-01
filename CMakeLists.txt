@@ -56,6 +56,7 @@ if(NOT spdlog_FOUND)
     FetchContent_Declare(
         spdlog
         URL      https://github.com/gabime/spdlog/archive/refs/tags/v1.15.1.tar.gz
+        URL_HASH SHA256=25c843860f039a1600f232c6eb9e01e6627f7d030a2ae5e232bdd3c9205d26cc
     )
     # Build spdlog as a static library (header-only also works but we want
     # a single compilation unit to keep build times short).

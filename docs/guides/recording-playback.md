@@ -37,11 +37,11 @@ thunderbird::data::Recorder recorder("session.tbrec", dev_info);
 recorder.start();
 
 // Feed frames (typically from a callback).
-device.on_lidar([&](const thunderbird::data::LidarFrame& f) {
-    recorder.write(f);
+device.on_lidar([&](auto frame) {
+    recorder.recordLidarFrame(*frame);
 });
-device.on_imu([&](const thunderbird::data::ImuFrame& f) {
-    recorder.write(f);
+device.on_imu([&](auto frame) {
+    recorder.recordImuFrame(*frame);
 });
 
 // ... run for the desired duration ...

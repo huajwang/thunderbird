@@ -120,6 +120,25 @@ struct DeviceManager::Impl {
                 {"measured_rate_hz",     {MetricType::Gauge,   s.measured_rate_hz}},
             };
         });
+
+        // Device health collector — registered once in Impl ctor.
+        // Returns empty map when health_monitor is null (simulated mode).
+        diagnostics_mgr.register_collector("device_health", [this]() -> MetricMap {
+            if (!health_monitor) return {};
+            auto snap = health_monitor->snapshot();
+            return {
+                {"health_score",     {MetricType::Gauge,   snap.health_score}},
+                {"lidar_hz",         {MetricType::Gauge,   snap.lidar_hz}},
+                {"imu_hz",           {MetricType::Gauge,   snap.imu_hz}},
+                {"camera_fps",       {MetricType::Gauge,   snap.camera_fps}},
+                {"bytes_total",      {MetricType::Counter, static_cast<double>(snap.bytes_total)}},
+                {"packets_total",    {MetricType::Counter, static_cast<double>(snap.packets_total)}},
+                {"crc_errors_total", {MetricType::Counter, static_cast<double>(snap.crc_errors_total)}},
+                {"reconnect_count",  {MetricType::Counter, static_cast<double>(snap.reconnect_count)}},
+                {"heartbeat_rtt_ms", {MetricType::Gauge,   snap.heartbeat_rtt_ms}},
+                {"flap_detected",    {MetricType::Flag,    snap.flap_detected ? 1.0 : 0.0}},
+            };
+        });
     }
 };
 
@@ -256,23 +275,6 @@ Status DeviceManager::connect() {
         impl_->health_monitor = std::make_unique<DeviceHealthMonitor>(
             cmgr, cmgr.decoder(), hcfg);
 
-        // Register device health diagnostics collector.
-        impl_->diagnostics_mgr.register_collector("device_health", [this]() -> MetricMap {
-            if (!impl_->health_monitor) return {};
-            auto snap = impl_->health_monitor->snapshot();
-            return {
-                {"health_score",     {MetricType::Gauge,   snap.health_score}},
-                {"lidar_hz",         {MetricType::Gauge,   snap.lidar_hz}},
-                {"imu_hz",           {MetricType::Gauge,   snap.imu_hz}},
-                {"camera_fps",       {MetricType::Gauge,   snap.camera_fps}},
-                {"bytes_total",      {MetricType::Counter, static_cast<double>(snap.bytes_total)}},
-                {"packets_total",    {MetricType::Counter, static_cast<double>(snap.packets_total)}},
-                {"crc_errors_total", {MetricType::Counter, static_cast<double>(snap.crc_errors_total)}},
-                {"reconnect_count",  {MetricType::Counter, static_cast<double>(snap.reconnect_count)}},
-                {"heartbeat_rtt_ms", {MetricType::Gauge,   snap.heartbeat_rtt_ms}},
-                {"flap_detected",    {MetricType::Flag,    snap.flap_detected ? 1.0 : 0.0}},
-            };
-        });
     }
 
     // Create facade drivers that the rest of DeviceManager expects.

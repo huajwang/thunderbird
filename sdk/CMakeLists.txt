@@ -94,7 +94,7 @@ target_include_directories(thunderbird_sdk
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(thunderbird_sdk PUBLIC Threads::Threads PRIVATE $<BUILD_INTERFACE:spdlog::spdlog>)
+target_link_libraries(thunderbird_sdk PUBLIC Threads::Threads $<BUILD_INTERFACE:spdlog::spdlog>)
 target_compile_definitions(thunderbird_sdk INTERFACE THUNDERBIRD_SDK_STATIC)
 if(THUNDERBIRD_USE_SIMULATED)
     target_compile_definitions(thunderbird_sdk PUBLIC THUNDERBIRD_SIMULATED=1)

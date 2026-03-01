@@ -23,6 +23,7 @@
 
 #include "thunderbird/logging.h"
 
+#include <mutex>
 #include <spdlog/spdlog.h>
 
 // ─── Compile-time minimum log level ─────────────────────────────────────────
@@ -85,11 +86,10 @@
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define TB_LOG_ONCE(level_val, level_enum, mod, ...)                           \
     do {                                                                        \
-        static bool _tb_logged_once_ = false;                                   \
-        if (!_tb_logged_once_) {                                                \
-            _tb_logged_once_ = true;                                            \
+        static std::once_flag _tb_once_flag_;                                   \
+        std::call_once(_tb_once_flag_, [&]() {                                  \
             TB_LOG_IMPL_(level_val, level_enum, mod, __VA_ARGS__);              \
-        }                                                                       \
+        });                                                                     \
     } while (0)
 
 #define TB_LOG_WARN_ONCE(mod, ...)  TB_LOG_ONCE(3, ::spdlog::level::warn, mod, __VA_ARGS__)

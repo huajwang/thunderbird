@@ -84,13 +84,16 @@ Enable verbose logging to diagnose SDK-internal issues:
 #include <thunderbird/logging.h>
 
 // Console: show everything.
-thunderbird::logging::LogConfig log_cfg;
-log_cfg.console_level = spdlog::level::trace;
-thunderbird::logging::initialize(log_cfg);
+thunderbird::logging::LoggingConfig log_cfg{};
+log_cfg.console_enabled = true;
+log_cfg.level = spdlog::level::trace;
+log_cfg.file_enabled = false;
+thunderbird::logging::init(log_cfg);
 
 // Or target a single module:
-thunderbird::logging::get(thunderbird::logging::Module::Transport)
-    ->set_level(spdlog::level::trace);
+thunderbird::logging::set_module_level(
+    thunderbird::logging::Module::Transport,
+    spdlog::level::trace);
 ```
 
 ---

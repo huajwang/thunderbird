@@ -75,7 +75,7 @@ struct RecorderStats {
     uint64_t total_bytes{0};          ///< approximate bytes written
 };
 
-class Recorder {
+class THUNDERBIRD_API Recorder {
 public:
     /// Construct a Recorder targeting the given file path.
     ///

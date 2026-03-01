@@ -44,7 +44,7 @@ struct DecoderStats {
 
 // ─── Abstract decoder ───────────────────────────────────────────────────────
 
-class IPacketDecoder {
+class THUNDERBIRD_API IPacketDecoder {
 public:
     virtual ~IPacketDecoder() = default;
 

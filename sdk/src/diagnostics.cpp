@@ -5,7 +5,9 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdio>
 #include <mutex>
+#include <iomanip>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -56,6 +58,29 @@ DiagnosticsSnapshot DiagnosticsSnapshot::compute_rates(
     return result;
 }
 
+/// Escape a string for JSON output (handles quotes, backslashes, control chars).
+static void json_escape(std::ostream& os, const std::string& s) {
+    for (char c : s) {
+        switch (c) {
+            case '"':  os << "\\\""; break;
+            case '\\': os << "\\\\"; break;
+            case '\b': os << "\\b"; break;
+            case '\f': os << "\\f"; break;
+            case '\n': os << "\\n"; break;
+            case '\r': os << "\\r"; break;
+            case '\t': os << "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+                    os << buf;
+                } else {
+                    os << c;
+                }
+        }
+    }
+}
+
 std::string DiagnosticsSnapshot::to_json() const {
     std::ostringstream os;
     os << '{';
@@ -65,22 +90,25 @@ std::string DiagnosticsSnapshot::to_json() const {
         if (!first_group) os << ',';
         first_group = false;
 
-        os << '"' << group << "\":{";
+        os << '"';
+        json_escape(os, group);
+        os << "\":{";
         bool first_metric = true;
         for (const auto& [name, mv] : metrics) {
             if (!first_metric) os << ',';
             first_metric = false;
 
-            os << '"' << name << "\":";
+            os << '"';
+            json_escape(os, name);
+            os << "\":";
             if (mv.type == MetricType::Flag) {
                 os << (mv.value != 0.0 ? "true" : "false");
             } else {
-                // Use fixed precision for readability.
-                // Counters are integers, gauges may have decimals.
                 if (mv.type == MetricType::Counter) {
                     os << static_cast<uint64_t>(mv.value);
                 } else {
-                    os << mv.value;
+                    // Fixed-point for gauges to avoid scientific notation.
+                    os << std::fixed << std::setprecision(6) << mv.value;
                 }
             }
         }
@@ -124,14 +152,18 @@ struct DiagnosticsManager::Impl {
             DiagnosticsSnapshot snap;
             snap.timestamp = std::chrono::steady_clock::now();
 
+            // Copy the collector list under lock, then invoke outside
+            // the lock so that slow collectors don't block register_collector().
+            std::vector<NamedCollector> local_collectors;
             {
                 std::lock_guard<std::mutex> lk(collectors_mu);
-                for (const auto& c : collectors) {
-                    try {
-                        snap.groups[c.name] = c.fn();
-                    } catch (...) {
-                        // Collector threw — skip this group this cycle.
-                    }
+                local_collectors = collectors;
+            }
+            for (const auto& c : local_collectors) {
+                try {
+                    snap.groups[c.name] = c.fn();
+                } catch (...) {
+                    // Collector threw — skip this group this cycle.
                 }
             }
 

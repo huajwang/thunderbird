@@ -95,18 +95,20 @@ The SDK uses per-module spdlog loggers that can be tuned independently.
 #include <thunderbird/logging.h>
 
 // Initialize logging (call once at startup).
-thunderbird::logging::LogConfig log_cfg;
-log_cfg.console_level = spdlog::level::info;     // stdout minimum level
-log_cfg.file_level    = spdlog::level::debug;     // file minimum level
+thunderbird::logging::LoggingConfig log_cfg;
+log_cfg.level         = spdlog::level::info;       // global minimum level
+log_cfg.console_enabled = true;
+log_cfg.file_enabled  = true;
 log_cfg.file_path     = "/var/log/thunderbird.log";
-log_cfg.max_file_size = 10 * 1024 * 1024;         // 10 MB per file
-log_cfg.max_files     = 3;                         // keep 3 rotated files
+log_cfg.max_file_size = 10 * 1024 * 1024;           // 10 MB per file
+log_cfg.max_files     = 3;                           // keep 3 rotated files
 
-thunderbird::logging::initialize(log_cfg);
+thunderbird::logging::init(log_cfg);
 
 // Per-module level override:
-thunderbird::logging::get(thunderbird::logging::Module::Transport)
-    ->set_level(spdlog::level::trace);
+thunderbird::logging::set_module_level(
+    thunderbird::logging::Module::Transport,
+    spdlog::level::trace);
 ```
 
 ### Compile-Time Level Stripping
