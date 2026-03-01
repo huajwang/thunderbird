@@ -15,9 +15,10 @@
 #include "thunderbird/packet_parser.h"
 #include "thunderbird/decoders/velodyne_vlp16.h"
 
+#include <algorithm>
+#include <cctype>
 #include <memory>
 #include <string>
-#include <algorithm>
 
 namespace thunderbird {
 
