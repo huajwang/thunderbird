@@ -124,11 +124,13 @@ void set_module_level(Module mod, spdlog::level::level_enum level);
 void flush();
 
 /// Drop all loggers and shut down async thread pool (if any).
-/// After this call, logging macros become no-ops.
+/// After this call, get() returns nullptr for all modules and
+/// logging macros become no-ops.
 void shutdown();
 
 /// Retrieve the spdlog logger for a module.
-/// Returns nullptr if init() has not been called.
+/// Returns nullptr if logging has not been initialized via init()
+/// or after shutdown() has been called.
 [[nodiscard]] spdlog::logger* get(Module mod) noexcept;
 
 /// Convenience: retrieve logger by index.
