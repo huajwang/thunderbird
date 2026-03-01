@@ -189,14 +189,18 @@ std::printf("Recorded: %llu LiDAR, %llu IMU, %llu Camera, %llu bytes\n",
 
 ---
 
-## Environment Variables
+## Environment Variables (planned)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `THUNDERBIRD_LOG_LEVEL` | `info` | Console log level override |
-| `THUNDERBIRD_LOG_FILE` | — | File path for log output |
-| `THUNDERBIRD_SIMULATED` | — | Force simulated mode at runtime |
+> Note: Environment variable support is **not yet wired into the SDK**. The
+> variables below are part of the planned configuration surface and are
+> documented here for forward compatibility. In current releases they are
+> effectively no-ops — use CMake options and runtime config structs instead.
 
+| Variable | Default | Planned behavior (not yet implemented) |
+|----------|---------|-----------------------------------------|
+| `THUNDERBIRD_LOG_LEVEL` | `info` | Override the default console log level (e.g. `trace`, `debug`, `info`, `warn`, `error`) |
+| `THUNDERBIRD_LOG_FILE` | — | If set, direct logs to the given file path instead of (or in addition to) stderr |
+| `THUNDERBIRD_SIMULATED` | — | If set to `1`/`true`, force simulated mode at runtime regardless of build-time defaults |
 ---
 
 ## Further Reading
