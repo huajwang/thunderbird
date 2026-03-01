@@ -67,15 +67,19 @@ public:
 
     // ── RX timestamp injection (for SO_TIMESTAMPING) ────────────────────
 
-    /// Set the kernel/NIC RX timestamp for the NEXT feed() call.
-    /// Decoders should use host_timestamp() instead of Timestamp::now()
-    /// to populate frame->host_timestamp.
-    /// Pass 0 to revert to software timestamps.
+    /// Set the kernel/NIC RX timestamp to be used by subsequent calls to
+    /// host_timestamp().  Typical usage with SO_TIMESTAMPING is:
+    ///   1) Call set_rx_timestamp() with the hardware RX time for a datagram.
+    ///   2) Call feed() with the bytes from that datagram.
+    /// The value persists until it is overwritten by another call to
+    /// set_rx_timestamp() or cleared by passing 0.
     void set_rx_timestamp(int64_t rx_ns) { rx_timestamp_ns_ = rx_ns; }
 
     // ── Metadata ────────────────────────────────────────────────────────
 
-    virtual const DecoderStats& stats() const = 0;
+    /// Returns a snapshot of current decoder statistics.
+    /// Safe to call from any thread (returns a copy).
+    virtual DecoderStats stats() const = 0;
 
     /// Human-readable name: "Thunderbird native", "Velodyne VLP-16", etc.
     virtual const char* decoder_name() const = 0;

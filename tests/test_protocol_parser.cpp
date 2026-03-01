@@ -204,7 +204,7 @@ void test_parser_crc_recovery() {
 
     // Should have recovered and parsed the good packet.
     assert(callback_count == 1);
-    assert(parser.stats().crc_errors >= 1);
+    assert(parser.stats().checksum_errors >= 1);
     std::puts("  Parser CRC recovery: OK");
 }
 

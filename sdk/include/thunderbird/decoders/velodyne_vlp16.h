@@ -109,7 +109,7 @@ public:
         frame_seq_ = 0;
     }
 
-    const DecoderStats& stats() const override { return stats_; }
+    DecoderStats stats() const override { return stats_; }
 
     const char* decoder_name() const override { return "Velodyne VLP-16"; }
 

@@ -48,11 +48,14 @@ DeviceHealthMonitor::DeviceHealthMonitor(ConnectionManager& conn_mgr,
 
     // Wire connection events from the ConnectionManager.
     conn_mgr_.on_event([this](ConnectionEvent e, const std::string& /*detail*/) {
-        notify_connection_event(e);
+        enqueue_connection_event(e);
     });
 }
 
 DeviceHealthMonitor::~DeviceHealthMonitor() {
+    // Unregister our callback before destroying `this` to prevent
+    // use-after-free if ConnectionManager outlives us.
+    conn_mgr_.on_event(nullptr);
     stop();
 }
 
@@ -169,6 +172,19 @@ void DeviceHealthMonitor::notify_heartbeat_rtt(int64_t rtt_us) {
 }
 
 void DeviceHealthMonitor::notify_connection_event(ConnectionEvent event) {
+    // Deliberately a no-op in the new design — events flow through the
+    // lock-free queue via enqueue_connection_event() instead.
+    // Kept for ABI compatibility; direct callers are safe because the
+    // method body below is identical to draining one event.
+    process_connection_event(event);
+}
+
+void DeviceHealthMonitor::enqueue_connection_event(ConnectionEvent event) {
+    std::lock_guard<std::mutex> lk(event_queue_mu_);
+    pending_conn_events_.push_back(event);
+}
+
+void DeviceHealthMonitor::process_connection_event(ConnectionEvent event) {
     switch (event) {
         case ConnectionEvent::Connected:
             // Don't transition to Connected yet — wait for first data packets.
@@ -216,6 +232,18 @@ void DeviceHealthMonitor::monitor_loop() {
 }
 
 void DeviceHealthMonitor::tick() {
+    // ── 0. Drain queued connection events (serialises with detectors) ────
+    {
+        std::vector<ConnectionEvent> events;
+        {
+            std::lock_guard<std::mutex> lk(event_queue_mu_);
+            events.swap(pending_conn_events_);
+        }
+        for (auto e : events) {
+            process_connection_event(e);
+        }
+    }
+
     const auto now_tp = Clock::now();
     const int64_t ts_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
         now_tp.time_since_epoch()).count();

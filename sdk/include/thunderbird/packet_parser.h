@@ -92,7 +92,7 @@ public:
         camera_seq_.reset();
     }
 
-    const DecoderStats& stats() const override { return decoder_stats_; }
+    DecoderStats stats() const override { return decoder_stats_; }
 
     const char* decoder_name() const override { return "Thunderbird native"; }
 

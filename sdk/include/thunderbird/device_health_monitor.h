@@ -38,6 +38,7 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 namespace thunderbird {
 
@@ -458,6 +459,8 @@ private:
     double compute_health_score() const;
     void emit_callbacks(const DeviceHealthSnapshot& snap, DeviceFault faults,
                         DeviceFault prev_faults, DeviceHealthState prev_state);
+    void enqueue_connection_event(ConnectionEvent event);
+    void process_connection_event(ConnectionEvent event);
 
     static int64_t now_ns() {
         return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -468,6 +471,10 @@ private:
     ConnectionManager&  conn_mgr_;
     IPacketDecoder&     decoder_;
     DeviceHealthConfig  cfg_;
+
+    // --- Connection event queue (written from any thread, drained in tick) ---
+    std::mutex                     event_queue_mu_;
+    std::vector<ConnectionEvent>   pending_conn_events_;
 
     // --- Per-sensor atomic counters (incremented on I/O thread) ---
     std::atomic<uint64_t> lidar_count_{0};

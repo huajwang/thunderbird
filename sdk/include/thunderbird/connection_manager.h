@@ -197,7 +197,7 @@ public:
 
     DeviceInfo device_info() const { return state_machine_.device_info(); }
 
-    const DecoderStats& decoder_stats() const { return decoder_->stats(); }
+    DecoderStats decoder_stats() const { return decoder_->stats(); }
 
 private:
     // ── Connect with exponential backoff ────────────────────────────────────
@@ -277,9 +277,9 @@ private:
                 buf.get(), kBufSize, /*timeout_ms=*/100);
 
             if (result.bytes_read > 0) {
-                if (result.rx_timestamp_ns != 0) {
-                    decoder_->set_rx_timestamp(result.rx_timestamp_ns);
-                }
+                // Always propagate the RX timestamp (0 = no kernel ts,
+                // decoder falls back to Timestamp::now()).
+                decoder_->set_rx_timestamp(result.rx_timestamp_ns);
                 decoder_->feed(buf.get(), result.bytes_read);
             }
         }

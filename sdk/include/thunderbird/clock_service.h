@@ -129,74 +129,28 @@ public:
             return;
         }
 
-        std::lock_guard lk(write_mu_);
-
-        diag_.observations = total_observations_;
-
-        if (!diag_.calibrated) {
-            // Collecting phase: fill the window until we have enough.
-            add_sample(hw_ns, host_ns);
-            if (hw_samples_.size() >= 3) {
-                recompute_ols();
-                diag_.calibrated = true;
-                publish_model(alpha_, beta_, true);
-                emit(ClockEvent::Calibrated);
-            }
-            return;
+        {
+            std::lock_guard lk(write_mu_);
+            observe_locked(hw_ns, host_ns);
         }
-
-        // Calibrated: compute residual.
-        double predicted = alpha_ * static_cast<double>(hw_ns) + beta_;
-        double residual = static_cast<double>(host_ns) - predicted;
-
-        // MAD-based outlier test (falls back to jump_threshold_ns when MAD≈0).
-        if (residuals_.size() >= 3) {
-            double mad = compute_mad();
-            double threshold = (mad > 0)
-                ? config_.mad_k_factor * mad
-                : static_cast<double>(config_.jump_threshold_ns);
-            if (std::abs(residual) > threshold) {
-                // Outlier detected.
-                ++diag_.outliers_rejected;
-                ++jump_candidate_count_;
-
-                // Store for potential re-seeding after confirmed jump.
-                jump_hw_buf_.push_back(hw_ns);
-                jump_host_buf_.push_back(host_ns);
-                if (jump_hw_buf_.size() > config_.jump_confirm_count + 2) {
-                    jump_hw_buf_.erase(jump_hw_buf_.begin());
-                    jump_host_buf_.erase(jump_host_buf_.begin());
-                }
-
-                // Check for confirmed time jump.
-                if (jump_candidate_count_ >= config_.jump_confirm_count) {
-                    handle_time_jump();
-                }
-                return;
-            }
-        }
-
-        // Normal sample: accept into OLS window.
-        jump_candidate_count_ = 0;
-        jump_hw_buf_.clear();
-        jump_host_buf_.clear();
-        add_sample(hw_ns, host_ns);
-        recompute_ols();
-        publish_model(alpha_, beta_, true);
-        check_drift_warning();
+        fire_pending_events();
     }
 
     /// Record a PPS edge arrival (Car profile only).
     void observe_pps(int64_t host_ns, int64_t pps_hw_ns = 0) {
         if (!config_.enable_pps) return;
 
-        std::lock_guard lk(write_mu_);
+        {
+            std::lock_guard lk(write_mu_);
 
-        if (last_pps_host_ns_ != 0) {
-            int64_t interval = host_ns - last_pps_host_ns_;
-            int64_t error = std::abs(interval - config_.pps_interval_ns);
+            bool jittery = false;
+            if (last_pps_host_ns_ != 0) {
+                int64_t interval = host_ns - last_pps_host_ns_;
+                int64_t error = std::abs(interval - config_.pps_interval_ns);
+                jittery = (error > config_.pps_tolerance_ns);
+            }
 
-            if (error > config_.pps_tolerance_ns) {
+            if (jittery) {
                 // Reject jittery pulse.
                 ++pps_miss_count_;
                 if (pps_miss_count_ >= 3 && diag_.pps_locked) {
@@ -204,35 +158,40 @@ public:
                     emit(ClockEvent::PpsLost);
                 }
                 last_pps_host_ns_ = host_ns;
-                return;
+            } else {
+                // Valid PPS pulse.
+                pps_miss_count_ = 0;
+                last_pps_host_ns_ = host_ns;
+
+                // Quantize to nearest second boundary.
+                int64_t pps_epoch = (host_ns + 500'000'000LL) /
+                                    1'000'000'000LL * 1'000'000'000LL;
+                pps_offset_ns_ = pps_epoch - host_ns;
+
+                // Apply PPS correction to β.
+                if (diag_.calibrated) {
+                    beta_ += pps_offset_ns_ * 0.1;  // Smooth correction
+                    publish_model(alpha_, beta_, true);
+                }
+
+                ++pps_lock_count_;
+                if (pps_lock_count_ >= 3 && !diag_.pps_locked) {
+                    diag_.pps_locked = true;
+                    emit(ClockEvent::PpsLocked);
+                }
+
+                // Also observe as clock pair if hw timestamp provided.
+                // Call observe_locked() directly to avoid recursive mutex.
+                if (pps_hw_ns != 0) {
+                    ++total_observations_;
+                    if (config_.decimate_factor <= 1 ||
+                        (total_observations_ % config_.decimate_factor) == 0) {
+                        observe_locked(pps_hw_ns, host_ns);
+                    }
+                }
             }
         }
-
-        // Valid PPS pulse.
-        pps_miss_count_ = 0;
-        last_pps_host_ns_ = host_ns;
-
-        // Quantize to nearest second boundary.
-        int64_t pps_epoch = (host_ns + 500'000'000LL) /
-                            1'000'000'000LL * 1'000'000'000LL;
-        pps_offset_ns_ = pps_epoch - host_ns;
-
-        // Apply PPS correction to β.
-        if (diag_.calibrated) {
-            beta_ += pps_offset_ns_ * 0.1;  // Smooth correction
-            publish_model(alpha_, beta_, true);
-        }
-
-        ++pps_lock_count_;
-        if (pps_lock_count_ >= 3 && !diag_.pps_locked) {
-            diag_.pps_locked = true;
-            emit(ClockEvent::PpsLocked);
-        }
-
-        // Also observe as clock pair if hw timestamp provided.
-        if (pps_hw_ns != 0) {
-            observe(pps_hw_ns, host_ns);
-        }
+        fire_pending_events();
     }
 
     // ── Timestamp conversion (called from any thread, lock-free) ────────
@@ -296,26 +255,87 @@ public:
     // ── Lifecycle ───────────────────────────────────────────────────────
 
     void reset() {
-        std::lock_guard lk(write_mu_);
-        hw_samples_.clear();
-        host_samples_.clear();
-        residuals_.clear();
-        alpha_ = 1.0;
-        beta_ = 0.0;
-        diag_ = {};
-        total_observations_ = 0;
-        jump_candidate_count_ = 0;
-        jump_hw_buf_.clear();
-        jump_host_buf_.clear();
-        pps_miss_count_ = 0;
-        pps_lock_count_ = 0;
-        last_pps_host_ns_ = 0;
-        pps_offset_ns_ = 0;
-        publish_model(1.0, 0.0, false);
-        emit(ClockEvent::ModelReset);
+        {
+            std::lock_guard lk(write_mu_);
+            hw_samples_.clear();
+            host_samples_.clear();
+            residuals_.clear();
+            alpha_ = 1.0;
+            beta_ = 0.0;
+            diag_ = {};
+            total_observations_ = 0;
+            jump_candidate_count_ = 0;
+            jump_hw_buf_.clear();
+            jump_host_buf_.clear();
+            pps_miss_count_ = 0;
+            pps_lock_count_ = 0;
+            last_pps_host_ns_ = 0;
+            pps_offset_ns_ = 0;
+            publish_model(1.0, 0.0, false);
+            emit(ClockEvent::ModelReset);
+        }
+        fire_pending_events();
     }
 
 private:
+    // ── Core observation logic (must be called with write_mu_ held) ─────
+
+    void observe_locked(int64_t hw_ns, int64_t host_ns) {
+        diag_.observations = total_observations_;
+
+        if (!diag_.calibrated) {
+            // Collecting phase: fill the window until we have enough.
+            add_sample(hw_ns, host_ns);
+            if (hw_samples_.size() >= 3) {
+                recompute_ols();
+                diag_.calibrated = true;
+                publish_model(alpha_, beta_, true);
+                emit(ClockEvent::Calibrated);
+            }
+            return;
+        }
+
+        // Calibrated: compute residual.
+        double predicted = alpha_ * static_cast<double>(hw_ns) + beta_;
+        double residual = static_cast<double>(host_ns) - predicted;
+
+        // MAD-based outlier test (falls back to jump_threshold_ns when MAD≈0).
+        if (residuals_.size() >= 3) {
+            double mad = compute_mad();
+            double threshold = (mad > 0)
+                ? config_.mad_k_factor * mad
+                : static_cast<double>(config_.jump_threshold_ns);
+            if (std::abs(residual) > threshold) {
+                // Outlier detected.
+                ++diag_.outliers_rejected;
+                ++jump_candidate_count_;
+
+                // Store for potential re-seeding after confirmed jump.
+                jump_hw_buf_.push_back(hw_ns);
+                jump_host_buf_.push_back(host_ns);
+                if (jump_hw_buf_.size() > config_.jump_confirm_count + 2) {
+                    jump_hw_buf_.erase(jump_hw_buf_.begin());
+                    jump_host_buf_.erase(jump_host_buf_.begin());
+                }
+
+                // Check for confirmed time jump.
+                if (jump_candidate_count_ >= config_.jump_confirm_count) {
+                    handle_time_jump();
+                }
+                return;
+            }
+        }
+
+        // Normal sample: accept into OLS window.
+        jump_candidate_count_ = 0;
+        jump_hw_buf_.clear();
+        jump_host_buf_.clear();
+        add_sample(hw_ns, host_ns);
+        recompute_ols();
+        publish_model(alpha_, beta_, true);
+        check_drift_warning();
+    }
+
     // ── OLS regression ──────────────────────────────────────────────────
 
     void add_sample(int64_t hw_ns, int64_t host_ns) {
@@ -452,9 +472,26 @@ private:
 
     // ── Event emission ──────────────────────────────────────────────────
 
+    /// Buffer an event for deferred delivery (must be called under write_mu_).
     void emit(ClockEvent event) {
-        if (event_cb_) {
-            event_cb_(event, diag_);
+        pending_events_.push_back(event);
+    }
+
+    /// Fire all buffered events outside the lock to avoid deadlocks
+    /// if the callback re-enters ClockService (e.g. calls diagnostics()).
+    void fire_pending_events() {
+        ClockEventCallback cb;
+        ClockDiagnostics snap;
+        std::vector<ClockEvent> events;
+        {
+            std::lock_guard lk(write_mu_);
+            if (pending_events_.empty()) return;
+            events.swap(pending_events_);
+            cb = event_cb_;
+            snap = diag_;
+        }
+        if (cb) {
+            for (auto e : events) cb(e, snap);
         }
     }
 
@@ -493,8 +530,9 @@ private:
     // Write mutex (protects all non-atomic state).
     mutable std::mutex write_mu_;
 
-    // Event callback.
+    // Event callback + pending event buffer (protected by write_mu_).
     ClockEventCallback event_cb_;
+    std::vector<ClockEvent> pending_events_;
 };
 
 } // namespace thunderbird

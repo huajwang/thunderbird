@@ -238,6 +238,7 @@ public:
     /// Check for partial-frame timeout.
     void check_timeout(int64_t now_ns) {
         if (!have_first_packet_ || accum_points_.empty()) return;
+        if (config_.expected_rate_hz <= 0) return;  // guard div-by-zero
 
         double expected_period_ns = 1e9 / config_.expected_rate_hz;
         int64_t timeout_ns = static_cast<int64_t>(
@@ -315,10 +316,7 @@ private:
         meta.scan_duration_ns = last_packet_hw_ns_ - first_packet_hw_ns_;
         meta.host_arrival_ns = host_now_ns;
         meta.total_packets = packets_in_frame_;
-        meta.expected_packets = (config_.expected_rate_hz > 0)
-            ? static_cast<uint32_t>(360.0 /
-                (360.0 / std::max(1u, packets_in_frame_)))
-            : 0;
+        meta.expected_packets = packets_in_frame_ + drops;
         meta.azimuth_start_deg = frame_azimuth_start_;
         meta.azimuth_end_deg = frame_azimuth_end_;
         meta.azimuth_coverage_deg = compute_azimuth_coverage();
