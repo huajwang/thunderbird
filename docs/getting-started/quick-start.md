@@ -40,7 +40,7 @@ cd build
 ctest --output-on-failure
 ```
 
-All 18 tests should pass.  If any fail, see the
+All tests should pass.  If any fail, see the
 [Troubleshooting Guide](../troubleshooting/troubleshooting.md).
 
 ## 3. Run Your First Example
