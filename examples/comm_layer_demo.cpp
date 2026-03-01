@@ -5,9 +5,11 @@
 // Demonstrates:
 //   1. Creating a transport (Ethernet or USB)
 //   2. Setting up ConnectionManager with retry policy
-//   3. Registering sensor callbacks on the PacketParser
+//   3. Registering sensor callbacks on the IPacketDecoder interface
 //   4. Handling connection events (retry, reconnect, heartbeat)
 //   5. Streaming and receiving parsed sensor data
+//   6. Using DecoderFactory + custom decoder constructor (commented section)
+//   7. Using raw_streaming_mode for third-party devices (commented section)
 //
 // This example uses the SimulatedTransport to work without real hardware.
 // To switch to real hardware, change the transport and URI.
@@ -17,11 +19,15 @@
 #include "thunderbird/simulated_transport.h"
 #include "thunderbird/ethernet_transport.h"
 #include "thunderbird/usb_transport.h"
+#include "thunderbird/decoders/decoder_factory.h"
 
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
+#include <memory>
 #include <thread>
+#include <vector>
 
 // ── Helper: feed synthetic packets into a SimulatedTransport ────────────────
 // In a real scenario the device firmware sends these over Ethernet/USB.
@@ -194,6 +200,31 @@ int main() {
 
     std::printf("\nReceived: %d IMU samples, %d LiDAR frames\n",
                 imu_count.load(), lidar_count.load());
+
+    // ── 10. DecoderFactory — creating decoders by model name ────────────────
+    //
+    // When connecting to a third-party LiDAR, use DecoderFactory to build
+    // the right decoder.  Pass it as the second argument to the two-argument
+    // ConnectionManager constructor.
+    //
+    //   auto decoder = DecoderFactory::create("vlp16");
+    //   if (!decoder) {
+    //       std::fprintf(stderr, "Unknown model\n");
+    //       return 1;
+    //   }
+    //   std::printf("Decoder: %s\n", decoder->decoder_name());
+    //
+    //   // Check supported models at compile time:
+    //   std::printf("vlp16 supported? %s\n",
+    //               DecoderFactory::is_supported("vlp16") ? "yes" : "no");
+    //
+    // Verify DecoderFactory compiles correctly.
+    std::printf("\n── DecoderFactory ───────────────────\n");
+    for (const char* model : {"thunderbird", "vlp16", "unknown"}) {
+        std::printf("  %-12s supported: %s\n", model,
+                    DecoderFactory::is_supported(model) ? "yes" : "no");
+    }
+
     std::puts("Done.");
     return 0;
 }
