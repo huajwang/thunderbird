@@ -117,8 +117,8 @@ struct AssemblerStats {
 
 class LidarFrameAssembler {
 public:
-    explicit LidarFrameAssembler(FrameAssemblerConfig config = {})
-        : config_(std::move(config))
+    explicit LidarFrameAssembler(const FrameAssemblerConfig& config = {})
+        : config_(config)
     {
         accum_points_.reserve(config_.point_reserve);
         packet_metas_.reserve(config_.max_packets_per_frame);

@@ -141,13 +141,23 @@ public:
         device_addr_.sin_port = htons(data_port);
 
         // ── Enable kernel RX timestamping on UDP (Linux only) ───────────
+        //
+        // Note: SOF_TIMESTAMPING_SOFTWARE returns CLOCK_REALTIME-domain
+        // timestamps.  The SDK normalises them into Timestamp{ns} and the
+        // clock service's OLS regression absorbs any domain offset when
+        // correlating HW ↔ host clocks.  If a future kernel supports
+        // CLOCK_MONOTONIC software timestamps, prefer those.
 #ifdef __linux__
         int ts_flags = SOF_TIMESTAMPING_RX_SOFTWARE
                      | SOF_TIMESTAMPING_SOFTWARE;
         // Attempt hardware timestamps if available (silently ignored if unsupported).
         // ts_flags |= SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RAW_HARDWARE;
-        setsockopt(udp_sock_, SOL_SOCKET, SO_TIMESTAMPING,
-                   &ts_flags, sizeof(ts_flags));
+        if (setsockopt(udp_sock_, SOL_SOCKET, SO_TIMESTAMPING,
+                       &ts_flags, sizeof(ts_flags)) != 0) {
+            // Timestamping unavailable — read_timestamped() will return
+            // rx_timestamp_ns == 0 and callers fall back to host clock.
+            timestamping_enabled_ = false;
+        }
 #endif
 
         open_ = true;
@@ -317,6 +327,7 @@ private:
     socket_t        udp_sock_{kInvalidSock};
     sockaddr_in     device_addr_{};
     bool            open_{false};
+    bool            timestamping_enabled_{true};
 };
 
 } // namespace thunderbird

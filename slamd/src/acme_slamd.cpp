@@ -815,10 +815,14 @@ bool SlamDaemon::start() {
 
     d.device->on_lidar([&d](std::shared_ptr<const LidarFrame> f) {
         // Feed per-packet data into the frame assembler.
-        // Azimuth information is not available from PacketParser lidar
-        // output, so use estimated azimuth from point cloud geometry.
+        //
+        // TODO(#perf): azimuth estimated from first/last point geometry.
+        // This is fragile when points are sparse or not monotonic in
+        // azimuth.  A more robust approach is to propagate azimuth_start/
+        // azimuth_end from the native wire LidarSubHeader through the
+        // decoder, avoiding per-packet atan2 and false wrap detection.
         float az_start = 0.0f, az_end = 0.0f;
-        if (!f->points.empty()) {
+        if (f->points.size() >= 2) {
             az_start = std::atan2(f->points.front().y,
                                   f->points.front().x) * 180.0f / 3.14159265f;
             az_end   = std::atan2(f->points.back().y,

@@ -140,6 +140,7 @@ private:
             buf_.erase(buf_.begin(), buf_.begin() + 2);
             ++stats_.resync_count;
             ++decoder_stats_.resync_count;
+            ++decoder_stats_.malformed_count;
             return true; // retry
         }
 
@@ -148,6 +149,7 @@ private:
             buf_.erase(buf_.begin(), buf_.begin() + 2);
             ++stats_.resync_count;
             ++decoder_stats_.resync_count;
+            ++decoder_stats_.malformed_count;
             return true;
         }
 

@@ -153,10 +153,11 @@ public:
     /// Access the decoder to register sensor callbacks.
     IPacketDecoder& decoder() { return *decoder_; }
 
-    /// Legacy accessor — returns the decoder cast to PacketParser.
+    /// Legacy accessor — returns the decoder cast to PacketParser, or nullptr
+    /// when the underlying decoder is not a PacketParser (e.g. third-party).
     /// Prefer decoder() for new code.
-    PacketParser& parser() {
-        return dynamic_cast<PacketParser&>(*decoder_);
+    PacketParser* parser() noexcept {
+        return dynamic_cast<PacketParser*>(decoder_.get());
     }
 
     // ── Lifecycle ───────────────────────────────────────────────────────────

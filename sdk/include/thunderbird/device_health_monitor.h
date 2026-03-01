@@ -17,7 +17,7 @@
 //   5. HeartbeatJitterDetector — heartbeat RTT quality
 //
 // Design:
-//   • Polling architecture — monitor thread polls ParserStats + atomic
+//   • Polling architecture — monitor thread polls DecoderStats + atomic
 //     per-sensor counters at a configurable tick rate (default 2 Hz).
 //   • Hot-path overhead: one relaxed atomic increment per packet (~2 ns).
 //   • All public methods are thread-safe.
@@ -27,7 +27,6 @@
 
 #include "thunderbird/connection_manager.h"
 #include "thunderbird/packet_decoder.h"
-#include "thunderbird/packet_parser.h"
 #include "thunderbird/types.h"
 
 #include <array>
@@ -403,7 +402,7 @@ public:
     /// Does NOT take ownership of conn_mgr or decoder.
     explicit DeviceHealthMonitor(ConnectionManager& conn_mgr,
                                   IPacketDecoder& decoder,
-                                  DeviceHealthConfig config = {});
+                                  const DeviceHealthConfig& config = {});
     ~DeviceHealthMonitor();
 
     // Non-copyable

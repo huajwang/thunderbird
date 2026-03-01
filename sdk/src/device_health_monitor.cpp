@@ -12,10 +12,10 @@ namespace thunderbird {
 
 DeviceHealthMonitor::DeviceHealthMonitor(ConnectionManager& conn_mgr,
                                          IPacketDecoder& decoder,
-                                         DeviceHealthConfig config)
+                                         const DeviceHealthConfig& config)
     : conn_mgr_(conn_mgr)
     , decoder_(decoder)
-    , cfg_(std::move(config))
+    , cfg_(config)
 {
     // Initialise rate detectors.
     rate_lidar_.expected_hz = cfg_.expected_lidar_hz;
@@ -403,7 +403,6 @@ double DeviceHealthMonitor::compute_health_score() const {
 
     double total_weight = w_lidar + w_imu + w_camera + w_stall +
                           w_crc + w_flap + w_hb;
-    if (total_weight <= 0) return 1.0;
 
     double score = (w_lidar  * rate_lidar_.score  +
                     w_imu    * rate_imu_.score    +

@@ -107,8 +107,8 @@ using ClockEventCallback = std::function<void(ClockEvent, const ClockDiagnostics
 
 class ClockService {
 public:
-    explicit ClockService(ClockServiceConfig config = {})
-        : config_(std::move(config))
+    explicit ClockService(const ClockServiceConfig& config = {})
+        : config_(config)
     {
         hw_samples_.reserve(config_.ols_window);
         host_samples_.reserve(config_.ols_window);
