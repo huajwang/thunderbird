@@ -44,3 +44,24 @@ add_test(NAME SlamHealth COMMAND test_slam_health)
 add_executable(test_runtime_profiler test_runtime_profiler.cpp)
 target_link_libraries(test_runtime_profiler PRIVATE thunderbird_sdk Threads::Threads)
 add_test(NAME RuntimeProfiler COMMAND test_runtime_profiler)
+
+add_executable(test_object_detector test_object_detector.cpp)
+target_link_libraries(test_object_detector PRIVATE thunderbird_sdk)
+add_test(NAME ObjectDetector COMMAND test_object_detector)
+
+add_executable(test_multi_object_tracker test_multi_object_tracker.cpp)
+target_link_libraries(test_multi_object_tracker PRIVATE thunderbird_sdk)
+add_test(NAME MultiObjectTracker COMMAND test_multi_object_tracker)
+
+add_executable(test_preprocessor test_preprocessor.cpp)
+target_link_libraries(test_preprocessor PRIVATE thunderbird_sdk)
+add_test(NAME Preprocessor COMMAND test_preprocessor)
+
+add_executable(test_perception_engine test_perception_engine.cpp)
+target_link_libraries(test_perception_engine PRIVATE thunderbird_sdk Threads::Threads)
+add_test(NAME PerceptionEngine COMMAND test_perception_engine)
+
+add_executable(test_kalman_hungarian test_kalman_hungarian.cpp)
+target_include_directories(test_kalman_hungarian PRIVATE ${CMAKE_SOURCE_DIR}/sdk/src/perception)
+target_link_libraries(test_kalman_hungarian PRIVATE thunderbird_sdk)
+add_test(NAME KalmanHungarian COMMAND test_kalman_hungarian)

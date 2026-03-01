@@ -63,6 +63,19 @@ public:
         tail_.store(0, std::memory_order_release);
     }
 
+    /// Drain all queued items (releasing any shared_ptr payloads) and
+    /// reset head/tail to zero.  Call only when no concurrent push/pop
+    /// is possible (e.g. after joining producer and consumer threads).
+    void drain_and_reset() {
+        while (pop()) { /* release each element */ }
+        head_.store(0, std::memory_order_release);
+        tail_.store(0, std::memory_order_release);
+        // Default-construct every slot to release any remaining refs
+        // (slots between old tail and head were move-sourced but may
+        //  still hold non-null shared_ptrs on some implementations).
+        buf_.fill(T{});
+    }
+
 private:
     static constexpr size_t kMask = Capacity - 1;
 
