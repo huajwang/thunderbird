@@ -449,38 +449,40 @@ print(spatial_sdk.__version__)  # "1.2.3"
 
 ---
 
-## Implementation Plan (step-by-step)
+## Implementation Phases
 
-### Phase 1 — Core infrastructure (this PoC) ✅
-1. Define data types with dual timestamps (hardware + host)
-2. Implement `ITransport` and `SimulatedTransport`
-3. Build per-sensor driver interface + simulated backends
-4. Implement lock-free `RingBuffer` for high-throughput paths
-5. Build `SyncEngine` with nearest-neighbour alignment
-6. Wire everything into `DeviceManager` with PImpl pattern
-7. Add C++ examples and unit tests
-8. Create ROS 2 bridge node (PointCloud2, Imu, Image publishers)
-9. Add Python bindings via pybind11
+### Phase 1 — Core infrastructure ✅
+- Data types with dual timestamps (hardware + host)
+- `ITransport` abstraction and `SimulatedTransport`
+- Per-sensor driver interface + simulated backends
+- Lock-free `RingBuffer` for high-throughput paths
+- `SyncEngine` with nearest-neighbour alignment
+- `DeviceManager` with PImpl pattern
+- C++ examples and unit tests
+- ROS 2 bridge node (PointCloud2, Imu, Image publishers)
+- Python bindings via pybind11
 
-### Phase 2 — Hardware integration (next)
-- [ ] Implement real USB/Ethernet transport drivers
-- [ ] Parse vendor-specific packet formats (LiDAR, IMU, Camera)
-- [ ] Hardware PTP/PPS timestamp recovery
-- [ ] Clock-offset estimation (linear regression on HW↔host timestamps)
-- [ ] Reconnection / watchdog logic
+### Phase 2 — Hardware integration ✅
+- Real USB/Ethernet transport drivers (`SO_TIMESTAMPING`)
+- Vendor-specific packet parsing (`IPacketDecoder`, `DecoderFactory`, VLP-16)
+- Hardware PTP/PPS timestamp recovery (`ClockService`)
+- Clock-offset estimation (linear regression on HW↔host timestamps)
+- `LidarFrameAssembler` (packet → frame reconstruction)
+- `DeviceHealthMonitor` (temperature, voltage, packet-loss tracking)
+- Reconnection / watchdog logic
+- Recording / playback (`Recorder`, `Player`, `.tbrec` binary format)
 
-### Phase 3 — Production hardening
-- [ ] Configurable logging framework (spdlog)
-- [ ] Thread-safe statistics / diagnostics endpoint
-- [ ] CI pipeline (CMake presets, cross-compilation, sanitizers)
-- [ ] API versioning & ABI stability guarantees
-- [ ] Documentation generation (Doxygen)
+### Phase 3 — Production hardening ✅
+- Configurable logging framework (spdlog, per-module levels, JSON sink)
+- Thread-safe `DiagnosticsManager` with snapshot API
+- API versioning & ABI stability (`abi_v0` namespace, `THUNDERBIRD_API` exports)
+- Comprehensive documentation (16 files: guides, troubleshooting, API reference)
 
-### Phase 4 — Perception-ready extensions
-- [ ] GPU-accelerated point cloud preprocessing
-- [ ] Camera intrinsic / extrinsic calibration storage
-- [ ] Multi-device support (multiple `DeviceManager` instances)
-- [ ] Recording / playback (rosbag2 or custom binary format)
+### Phase 4 — Perception-ready extensions (next)
+- GPU-accelerated point cloud preprocessing
+- Camera intrinsic / extrinsic calibration storage
+- Multi-device support (multiple `DeviceManager` instances)
+- Object detection pipeline
 
 ---
 
