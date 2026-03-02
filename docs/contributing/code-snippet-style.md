@@ -110,7 +110,7 @@ instructions immediately below:
 ```bash
 g++ -std=c++20 -o example example.cpp \
     -I/usr/local/include \
-    -lthunderbird-sdk -lpthread
+    -lthunderbird_sdk -lpthread
 ```
 
 Or with CMake:
@@ -118,7 +118,7 @@ Or with CMake:
 ```cmake
 find_package(ThunderbirdSDK REQUIRED)
 add_executable(example example.cpp)
-target_link_libraries(example ThunderbirdSDK::thunderbird-sdk)
+target_link_libraries(example Thunderbird::SDK)
 ```
 ````
 

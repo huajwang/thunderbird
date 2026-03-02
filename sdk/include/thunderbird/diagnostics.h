@@ -70,7 +70,7 @@ using MetricMap = std::unordered_map<std::string, MetricValue>;
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// Point-in-time snapshot of all registered metrics.
-struct DiagnosticsSnapshot {
+struct THUNDERBIRD_API DiagnosticsSnapshot {
     /// Steady-clock timestamp of when this snapshot was collected.
     std::chrono::steady_clock::time_point timestamp{};
 

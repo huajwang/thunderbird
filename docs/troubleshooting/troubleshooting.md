@@ -22,7 +22,7 @@ Common problems, their causes, and fixes.
 |---------|-------|-----|
 | `CMake Error: Could not find pybind11` | Python bindings enabled but pybind11 not found | Install `pybind11-dev` or set `-DTHUNDERBIRD_BUILD_PYTHON=OFF` |
 | `fatal error: spdlog/spdlog.h: No such file or directory` | spdlog not installed | `sudo apt install libspdlog-dev` (≥ 1.10) |
-| `undefined reference to thunderbird::*` | Linking order wrong | Link with `-lthunderbird-sdk` **after** your object files |
+| `undefined reference to thunderbird::*` | Linking order wrong | Link with `-lthunderbird_sdk` **after** your object files (or use `pkg-config --libs thunderbird-sdk`) |
 | `ABI mismatch: built v1, loaded v2` | SDK library/header version mismatch | Rebuild your app against the same SDK version |
 | Build fails on macOS with Xcode ≥ 15 | Linker warnings treated as errors | Add `-DCMAKE_EXE_LINKER_FLAGS="-Wl,-no_warn_duplicate_libraries"` |
 

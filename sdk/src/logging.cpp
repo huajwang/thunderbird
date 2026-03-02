@@ -35,7 +35,7 @@ static constexpr const char* kDefaultPattern =
     "[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] %v";
 
 static constexpr const char* kDefaultJsonPattern =
-    R"({"ts":"%Y-%m-%dT%H:%M:%S.%e","level":"%l","module":"%n","msg":"%v"})";
+    R"({"ts":"%Y-%m-%dT%H:%M:%S.%e","level":"%l","module":"%n"})";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

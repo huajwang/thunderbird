@@ -86,10 +86,12 @@
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define TB_LOG_ONCE(level_val, level_enum, mod, ...)                           \
     do {                                                                        \
-        static std::once_flag _tb_once_flag_;                                   \
-        std::call_once(_tb_once_flag_, [&]() {                                  \
-            TB_LOG_IMPL_(level_val, level_enum, mod, __VA_ARGS__);              \
-        });                                                                     \
+        if constexpr ((level_val) >= THUNDERBIRD_LOG_LEVEL_COMPILE) {           \
+            static std::once_flag _tb_once_flag_;                               \
+            std::call_once(_tb_once_flag_, [&]() {                              \
+                TB_LOG_IMPL_(level_val, level_enum, mod, __VA_ARGS__);          \
+            });                                                                 \
+        }                                                                       \
     } while (0)
 
 #define TB_LOG_WARN_ONCE(mod, ...)  TB_LOG_ONCE(3, ::spdlog::level::warn, mod, __VA_ARGS__)
@@ -99,10 +101,12 @@
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define TB_LOG_EVERY_N(level_val, level_enum, mod, n, ...)                     \
     do {                                                                        \
-        static_assert((n) > 0, "TB_LOG_EVERY_N: n must be > 0");              \
-        thread_local uint64_t _tb_log_ctr_ = 0;                                \
-        if ((++_tb_log_ctr_) % static_cast<uint64_t>(n) == 0) {                \
-            TB_LOG_IMPL_(level_val, level_enum, mod, __VA_ARGS__);              \
+        if constexpr ((level_val) >= THUNDERBIRD_LOG_LEVEL_COMPILE) {           \
+            static_assert((n) > 0, "TB_LOG_EVERY_N: n must be > 0");          \
+            thread_local uint64_t _tb_log_ctr_ = 0;                            \
+            if ((++_tb_log_ctr_) % static_cast<uint64_t>(n) == 0) {            \
+                TB_LOG_IMPL_(level_val, level_enum, mod, __VA_ARGS__);          \
+            }                                                                   \
         }                                                                       \
     } while (0)
 

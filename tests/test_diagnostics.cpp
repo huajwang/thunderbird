@@ -16,14 +16,14 @@
 
 #include "thunderbird/diagnostics.h"
 
-#include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <thread>
 
 namespace tbd = thunderbird;
 
 #define VERIFY(expr) \
-    do { if (!(expr)) { std::fprintf(stderr, "FAIL: %s @ %s:%d\n", #expr, __FILE__, __LINE__); assert(false); } } while (0)
+    do { if (!(expr)) { std::fprintf(stderr, "FAIL: %s @ %s:%d\n", #expr, __FILE__, __LINE__); std::abort(); } } while (0)
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 

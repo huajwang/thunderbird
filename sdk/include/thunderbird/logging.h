@@ -114,7 +114,7 @@ struct LoggingConfig {
     ///     properly escaped value.
     ///
     /// Default:
-    ///   R"({"ts":"%Y-%m-%dT%H:%M:%S.%eZ","level":"%l","module":"%n"})"
+    ///   R"({"ts":"%Y-%m-%dT%H:%M:%S.%e","level":"%l","module":"%n"})"
     std::string json_pattern;
 };
 
@@ -123,29 +123,29 @@ struct LoggingConfig {
 /// Initialize all module loggers with the given configuration.
 /// Safe to call multiple times — subsequent calls are no-ops after the first.
 /// NOT thread-safe with respect to itself; call once from main().
-void init(const LoggingConfig& cfg = {});
+THUNDERBIRD_API void init(const LoggingConfig& cfg = {});
 
 /// Returns true if init() has been called.
-[[nodiscard]] bool is_initialized() noexcept;
+[[nodiscard]] THUNDERBIRD_API bool is_initialized() noexcept;
 
 /// Change the runtime log level of ALL module loggers.
-void set_level(spdlog::level::level_enum level);
+THUNDERBIRD_API void set_level(spdlog::level::level_enum level);
 
 /// Change the runtime log level of a single module logger.
-void set_module_level(Module mod, spdlog::level::level_enum level);
+THUNDERBIRD_API void set_module_level(Module mod, spdlog::level::level_enum level);
 
 /// Flush all sinks synchronously.  Call before shutdown or crash handler.
-void flush();
+THUNDERBIRD_API void flush();
 
 /// Drop all loggers and shut down async thread pool (if any).
 /// After this call, get() returns nullptr for all modules and
 /// logging macros become no-ops.
-void shutdown();
+THUNDERBIRD_API void shutdown();
 
 /// Retrieve the spdlog logger for a module.
 /// Returns nullptr if logging has not been initialized via init()
 /// or after shutdown() has been called.
-[[nodiscard]] spdlog::logger* get(Module mod) noexcept;
+[[nodiscard]] THUNDERBIRD_API spdlog::logger* get(Module mod) noexcept;
 
 /// Convenience: retrieve logger by index.
 [[nodiscard]] inline spdlog::logger* get_by_index(uint8_t idx) noexcept {

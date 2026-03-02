@@ -17,13 +17,13 @@
 #include "thunderbird/logging.h"
 #include "thunderbird/log_macros.h"
 
-#include <cassert>
 #include <cstdio>
+#include <cstdlib>
 
 namespace tbl = thunderbird::logging;
 
 #define VERIFY(expr) \
-    do { if (!(expr)) { std::fprintf(stderr, "FAIL: %s @ %s:%d\n", #expr, __FILE__, __LINE__); assert(false); } } while (0)
+    do { if (!(expr)) { std::fprintf(stderr, "FAIL: %s @ %s:%d\n", #expr, __FILE__, __LINE__); std::abort(); } } while (0)
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 

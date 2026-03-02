@@ -298,6 +298,11 @@ private:
     void emit_frame(bool is_partial, int64_t host_now_ns) {
         if (accum_points_.size() < config_.min_points_to_emit) {
             ++stats_.runt_frames_discarded;
+            // Publish so cross-thread readers see the runt counter.
+            {
+                std::lock_guard<std::mutex> lock(stats_mu_);
+                stats_published_ = stats_;
+            }
             clear_accumulator();
             return;
         }
