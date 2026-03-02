@@ -11,7 +11,11 @@
 #include <functional>
 #include <memory>
 
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
+
 namespace thunderbird {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ─── Timestamp ──────────────────────────────────────────────────────────────
 
@@ -154,4 +158,5 @@ using ImuCallback    = std::function<void(std::shared_ptr<const ImuSample>)>;
 using CameraCallback = std::function<void(std::shared_ptr<const CameraFrame>)>;
 using SyncCallback   = std::function<void(std::shared_ptr<const SyncBundle>)>;
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird

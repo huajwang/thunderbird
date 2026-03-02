@@ -1,0 +1,125 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird SDK — Doxygen Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Generate:   THUNDERBIRD_VERSION=0.2.0 doxygen docs/api/Doxyfile
+# From CMake: cmake --build build --target docs
+# Output:     build/docs/html/index.html
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Project ──────────────────────────────────────────────────────────────────
+
+PROJECT_NAME           = "Thunderbird SDK"
+PROJECT_NUMBER         = $(THUNDERBIRD_VERSION)
+PROJECT_BRIEF          = "Multi-sensor robotics SDK for LiDAR + IMU + Camera fusion"
+PROJECT_LOGO           =
+
+# ── Input ────────────────────────────────────────────────────────────────────
+
+INPUT                  = sdk/include/thunderbird \
+                         docs/api/mainpage.dox \
+                         examples
+
+FILE_PATTERNS          = *.h *.dox *.cpp *.py
+
+# Exclude internal / detail headers
+EXCLUDE_PATTERNS       = */detail/*
+EXCLUDE                = sdk/include/thunderbird/simulated_transport.h \
+                         sdk/include/thunderbird/protocol.h \
+                         sdk/include/thunderbird/drivers/ \
+                         sdk/include/thunderbird/decoders/
+
+RECURSIVE              = YES
+
+EXAMPLE_PATH           = examples
+EXAMPLE_PATTERNS       = *.cpp *.py
+
+# ── Parsing ──────────────────────────────────────────────────────────────────
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+EXTRACT_LOCAL_CLASSES  = NO
+
+HIDE_UNDOC_MEMBERS     = YES
+HIDE_UNDOC_CLASSES     = YES
+HIDE_IN_BODY_DOCS      = YES
+
+# The project uses /// style, first sentence is the brief.
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = YES
+MULTILINE_CPP_IS_BRIEF = NO
+
+# Macro handling for THUNDERBIRD_API, ABI namespace
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = THUNDERBIRD_API= \
+                         THUNDERBIRD_LOCAL= \
+                         THUNDERBIRD_DEPRECATED(x)=[[deprecated(x)]] \
+                         THUNDERBIRD_ABI_NAMESPACE_BEGIN= \
+                         THUNDERBIRD_ABI_NAMESPACE_END= \
+                         THUNDERBIRD_SDK_EXPORTS=1
+
+# ── Build ────────────────────────────────────────────────────────────────────
+
+ENABLE_PREPROCESSING   = YES
+SORT_BRIEF_DOCS        = YES
+SORT_MEMBERS_CTORS_1ST = YES
+SORT_GROUP_NAMES       = YES
+
+# ── Output ───────────────────────────────────────────────────────────────────
+
+OUTPUT_DIRECTORY       = build/docs
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+GENERATE_MAN           = NO
+HTML_OUTPUT            = html
+HTML_COLORSTYLE        = LIGHT
+
+# Uncomment to use Doxygen Awesome theme:
+# HTML_EXTRA_STYLESHEET  = docs/api/doxygen-awesome.css
+# HTML_HEADER            =
+# HTML_EXTRA_FILES       =
+
+DISABLE_INDEX          = NO
+GENERATE_TREEVIEW      = YES
+FULL_SIDEBAR           = NO
+
+# ── Source browser ───────────────────────────────────────────────────────────
+
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = YES
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+
+# ── Diagrams ─────────────────────────────────────────────────────────────────
+
+HAVE_DOT               = YES
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+
+CLASS_GRAPH            = YES
+COLLABORATION_GRAPH    = YES
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = NO
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO
+
+DOT_GRAPH_MAX_NODES    = 80
+MAX_DOT_GRAPH_DEPTH    = 3
+
+# ── Namespaces ───────────────────────────────────────────────────────────────
+
+HIDE_SCOPE_NAMES       = NO
+SHOW_NAMESPACES        = YES
+
+# ── Warnings ─────────────────────────────────────────────────────────────────
+
+QUIET                  = NO
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
+WARN_LOGFILE           = build/docs/doxygen_warnings.log

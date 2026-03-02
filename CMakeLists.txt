@@ -46,6 +46,37 @@ endif()
 # ── Dependencies ─────────────────────────────────────────────────────────────
 find_package(Threads REQUIRED)
 
+# ── spdlog (structured logging) ─────────────────────────────────────────────
+# Strategy: try find_package first (system / vcpkg / Conan), then fall back to
+# FetchContent for a hermetic build — same pattern as pybind11.
+find_package(spdlog QUIET)
+if(NOT spdlog_FOUND)
+    message(STATUS "spdlog not found locally — fetching via FetchContent")
+    include(FetchContent)
+    FetchContent_Declare(
+        spdlog
+        URL      https://github.com/gabime/spdlog/archive/refs/tags/v1.15.1.tar.gz
+        URL_HASH SHA256=25c843860f039a1600f232c6eb9e01e6627f7d030a2ae5e232bdd3c9205d26cc
+    )
+    # Build spdlog as a static library (header-only also works but we want
+    # a single compilation unit to keep build times short).
+    set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+    set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
+    # spdlog static lib must be compiled with -fPIC so it can be linked
+    # into our shared library (libthunderbird_sdk.so). We set
+    # POSITION_INDEPENDENT_CODE on the spdlog target after it is created
+    # instead of forcing CMAKE_POSITION_INDEPENDENT_CODE globally.
+    FetchContent_MakeAvailable(spdlog)
+else()
+    message(STATUS "spdlog found: ${spdlog_VERSION}")
+endif()
+
+# Ensure spdlog is built with PIC without affecting unrelated targets.
+if(TARGET spdlog)
+    set_property(TARGET spdlog PROPERTY POSITION_INDEPENDENT_CODE ON)
+endif()
 # ── SDK core library ─────────────────────────────────────────────────────────
 add_subdirectory(sdk)
 

@@ -78,7 +78,11 @@
 #include <functional>
 #include <memory>
 
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
+
 namespace thunderbird::perception {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  PerceptionEngine — public API
@@ -106,7 +110,7 @@ namespace thunderbird::perception {
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-class PerceptionEngine {
+class THUNDERBIRD_API PerceptionEngine {
 public:
     // ── Construction / Destruction ──────────────────────────────────────
 
@@ -228,4 +232,5 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::perception

@@ -15,6 +15,7 @@
 #include "thunderbird/perception/object_detector.h"
 
 namespace thunderbird::perception {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 class GpuPillarDetector final : public ObjectDetector {
 public:
@@ -34,6 +35,7 @@ public:
     [[nodiscard]] bool uses_gpu() const noexcept override { return true; }
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::perception
 
 #endif // THUNDERBIRD_HAS_GPU_PERCEPTION

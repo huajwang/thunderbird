@@ -8,6 +8,7 @@
 #include "thunderbird/device_health_monitor.h"
 #include "thunderbird/clock_service.h"
 #include "thunderbird/lidar_frame_assembler.h"
+#include "thunderbird/diagnostics.h"
 
 // Simulated drivers
 #include "thunderbird/drivers/simulated_lidar.h"
@@ -24,6 +25,7 @@
 #include <mutex>
 
 namespace thunderbird {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ─── PImpl ──────────────────────────────────────────────────────────────────
 
@@ -65,13 +67,79 @@ struct DeviceManager::Impl {
     // Data Abstraction Layer (Pull + Callback API)
     data::DataLayer data_layer;
 
+    // Diagnostics (unified metrics aggregator)
+    DiagnosticsManager diagnostics_mgr;
+
     explicit Impl(DeviceConfig cfg)
         : config(std::move(cfg)),
           sync_engine(config.sync),
           time_sync_engine(config.time_sync),
           clock_service(config.clock),
           frame_assembler(config.frame_assembler),
-          data_layer(data::DataLayerConfig{}) {}
+          data_layer(data::DataLayerConfig{})
+    {
+        // ── Register diagnostics collectors ─────────────────────────────
+
+        // Time-sync stats.
+        diagnostics_mgr.register_collector("time_sync", [this]() -> MetricMap {
+            auto s = time_sync_engine.stats();
+            return {
+                {"frames_produced", {MetricType::Counter, static_cast<double>(s.frames_produced)}},
+                {"camera_misses",   {MetricType::Counter, static_cast<double>(s.camera_misses)}},
+                {"imu_gaps",        {MetricType::Counter, static_cast<double>(s.imu_gaps)}},
+                {"mean_offset_ns",  {MetricType::Gauge,   s.mean_offset_ns}},
+                {"drift_ns_per_sec",{MetricType::Gauge,   s.drift_ns_per_sec}},
+            };
+        });
+
+        // Clock service diagnostics.
+        diagnostics_mgr.register_collector("clock", [this]() -> MetricMap {
+            auto d = clock_service.diagnostics();
+            return {
+                {"offset_ns",        {MetricType::Gauge,   d.offset_ns}},
+                {"drift_ns_per_sec", {MetricType::Gauge,   d.drift_ns_per_sec}},
+                {"offset_stddev_ns", {MetricType::Gauge,   d.offset_stddev_ns}},
+                {"observations",     {MetricType::Counter, static_cast<double>(d.observations)}},
+                {"jumps_detected",   {MetricType::Counter, static_cast<double>(d.jumps_detected)}},
+                {"outliers_rejected",{MetricType::Counter, static_cast<double>(d.outliers_rejected)}},
+                {"calibrated",       {MetricType::Flag,    d.calibrated ? 1.0 : 0.0}},
+                {"pps_locked",       {MetricType::Flag,    d.pps_locked ? 1.0 : 0.0}},
+            };
+        });
+
+        // Frame assembler stats.
+        diagnostics_mgr.register_collector("assembler", [this]() -> MetricMap {
+            auto s = frame_assembler.stats();
+            return {
+                {"frames_emitted",       {MetricType::Counter, static_cast<double>(s.frames_emitted)}},
+                {"partial_frames",       {MetricType::Counter, static_cast<double>(s.partial_frames)}},
+                {"packets_ingested",     {MetricType::Counter, static_cast<double>(s.packets_ingested)}},
+                {"points_ingested",      {MetricType::Counter, static_cast<double>(s.points_ingested)}},
+                {"dropped_packets_total",{MetricType::Counter, static_cast<double>(s.dropped_packets_total)}},
+                {"avg_points_per_frame", {MetricType::Gauge,   s.avg_points_per_frame}},
+                {"measured_rate_hz",     {MetricType::Gauge,   s.measured_rate_hz}},
+            };
+        });
+
+        // Device health collector — registered once in Impl ctor.
+        // Returns empty map when health_monitor is null (simulated mode).
+        diagnostics_mgr.register_collector("device_health", [this]() -> MetricMap {
+            if (!health_monitor) return {};
+            auto snap = health_monitor->snapshot();
+            return {
+                {"health_score",     {MetricType::Gauge,   snap.health_score}},
+                {"lidar_hz",         {MetricType::Gauge,   snap.lidar_hz}},
+                {"imu_hz",           {MetricType::Gauge,   snap.imu_hz}},
+                {"camera_fps",       {MetricType::Gauge,   snap.camera_fps}},
+                {"bytes_total",      {MetricType::Counter, static_cast<double>(snap.bytes_total)}},
+                {"packets_total",    {MetricType::Counter, static_cast<double>(snap.packets_total)}},
+                {"crc_errors_total", {MetricType::Counter, static_cast<double>(snap.crc_errors_total)}},
+                {"reconnect_count",  {MetricType::Counter, static_cast<double>(snap.reconnect_count)}},
+                {"heartbeat_rtt_ms", {MetricType::Gauge,   snap.heartbeat_rtt_ms}},
+                {"flap_detected",    {MetricType::Flag,    snap.flap_detected ? 1.0 : 0.0}},
+            };
+        });
+    }
 };
 
 // ─── Construction / destruction ─────────────────────────────────────────────
@@ -206,6 +274,7 @@ Status DeviceManager::connect() {
 
         impl_->health_monitor = std::make_unique<DeviceHealthMonitor>(
             cmgr, cmgr.decoder(), hcfg);
+
     }
 
     // Create facade drivers that the rest of DeviceManager expects.
@@ -278,11 +347,17 @@ Status DeviceManager::start() {
     // Start device health monitor after streaming begins.
     if (impl_->health_monitor) impl_->health_monitor->start();
 
+    // Start diagnostics collection.
+    impl_->diagnostics_mgr.start();
+
     return Status::OK;
 }
 
 Status DeviceManager::stop() {
     if (!impl_->streaming) return Status::OK;
+
+    // Stop diagnostics collection.
+    impl_->diagnostics_mgr.stop();
 
     // Stop health monitor before stopping streams.
     if (impl_->health_monitor) impl_->health_monitor->stop();
@@ -374,4 +449,23 @@ const LidarFrameAssembler& DeviceManager::frame_assembler() const {
     return impl_->frame_assembler;
 }
 
+// ─── Diagnostics ───────────────────────────────────────────────────────────────────────
+
+DiagnosticsManager& DeviceManager::diagnostics() {
+    return impl_->diagnostics_mgr;
+}
+
+const DiagnosticsManager& DeviceManager::diagnostics() const {
+    return impl_->diagnostics_mgr;
+}
+
+DiagnosticsSnapshot DeviceManager::diagnostics_snapshot() const {
+    return impl_->diagnostics_mgr.latest_snapshot();
+}
+
+std::string DeviceManager::diagnostics_json() const {
+    return impl_->diagnostics_mgr.to_json();
+}
+
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird

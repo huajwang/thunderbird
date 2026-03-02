@@ -30,6 +30,7 @@
 #include <thread>
 
 namespace thunderbird::perception {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  Exponential moving average helper
@@ -482,4 +483,5 @@ size_t PerceptionEngine::dropCount() const noexcept {
     return impl_->perception_ring.dropped();
 }
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::perception

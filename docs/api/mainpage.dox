@@ -1,0 +1,97 @@
+/**
+@mainpage Thunderbird SDK
+
+@tableofcontents
+
+@section intro Introduction
+
+The <b>Thunderbird SDK</b> is a C++20 library for interfacing with fused
+<b>LiDAR + IMU + Camera</b> sensor devices.  It provides hardware abstraction,
+time synchronization, 3D perception, SLAM integration, and recording/playback
+— all behind a single entry point: @ref thunderbird::DeviceManager.
+
+@section features Key Capabilities
+
+| Feature | Header | Description |
+|---------|--------|-------------|
+| Device management | thunderbird/device_manager.h | Connect, stream, disconnect lifecycle |
+| Time synchronization | thunderbird/time_sync.h | Cross-sensor clock alignment with drift compensation |
+| Data abstraction | thunderbird/data_layer.h | Pull API and Callback API for sensor frames |
+| Clock service | thunderbird/clock_service.h | Unified hardware ↔ host clock domain |
+| LiDAR frame assembly | thunderbird/lidar_frame_assembler.h | Multi-packet scan reassembly |
+| Device health | thunderbird/device_health_monitor.h | Per-sensor health scoring |
+| 3D perception | thunderbird/perception/perception_engine.h | Object detection + multi-object tracking |
+| Recording | thunderbird/recorder.h | Binary .tbrec session recording |
+| Playback | thunderbird/player.h | Offline replay with original timing |
+| Diagnostics | thunderbird/diagnostics.h | Unified metrics aggregation (JSON) |
+| Logging | thunderbird/logging.h | Per-module spdlog-based logging |
+
+@section quickstart Quick Start
+
+@code{.cpp}
+#include <thunderbird/device_manager.h>
+#include <cstdio>
+#include <thread>
+
+int main() {
+    thunderbird::DeviceManager device;
+
+    device.on_lidar([](auto frame) {
+        std::printf("LiDAR: %zu points\n", frame->points.size());
+    });
+
+    device.connect();
+    device.start();
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    device.stop();
+    device.disconnect();
+}
+@endcode
+
+See the @ref examples for complete runnable programs.
+
+@section namespaces Namespace Layout
+
+| Namespace | Purpose |
+|-----------|---------|
+| @ref thunderbird | Core SDK types, DeviceManager, transports |
+| @ref thunderbird::data | Sensor data types, time sync, recording |
+| @ref thunderbird::logging | Per-module logging system |
+| @ref thunderbird::perception | 3D object detection and tracking |
+| @ref thunderbird::odom | SLAM engine, profiler, health |
+
+All public symbols live inside an inline ABI-versioned namespace (`abi_v0`)
+managed by the macros in thunderbird/abi.h.  This is transparent to users
+and enables link-time ABI mismatch detection.
+
+@section headers Header Tiers
+
+| Tier | Stability | Headers |
+|------|-----------|---------|
+| **Tier 1 — Public API** | Stable, SemVer-governed | device_manager.h, types.h, sensor_data.h, time_sync.h, diagnostics.h, recorder.h, player.h, version.h |
+| **Tier 2 — Extension** | Stable interfaces, may add members | transport.h, packet_decoder.h, perception_engine.h, object_detector.h, logging.h |
+| **Tier 3 — Internal** | No stability guarantees | drivers/*, decoders/*, protocol.h, simulated_transport.h |
+
+@section examples Examples
+
+| Example | Description |
+|---------|-------------|
+| @ref basic_streaming.cpp | Connect and stream all sensors |
+| @ref sync_demo.cpp | Receive time-aligned sensor bundles |
+| @ref sync_layer_demo.cpp | SyncedFrame Pull + Callback APIs |
+| @ref callback_api_demo.cpp | Per-sensor callback registration |
+| @ref pull_api_demo.cpp | Application-driven frame polling |
+| @ref recorder_demo.cpp | Record and replay sessions |
+| @ref comm_layer_demo.cpp | Connection state machine |
+| @ref clock_service_demo.cpp | Clock domain + drift estimation |
+| @ref health_monitor_demo.cpp | Per-sensor health monitoring |
+| @ref python_example.py | Python SDK usage |
+
+@section links Further Reading
+
+- <a href="https://github.com/huajwang/thunderbird">GitHub Repository</a>
+- <a href="../../docs/guides/time-synchronization.md">Time Synchronization Guide</a>
+- <a href="../../docs/guides/advanced-configuration.md">Advanced Configuration</a>
+- <a href="../../docs/troubleshooting/troubleshooting.md">Troubleshooting</a>
+
+*/

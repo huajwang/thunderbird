@@ -30,7 +30,11 @@
 #include <memory>
 #include <span>
 
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
+
 namespace thunderbird::data {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ─── LiDAR ──────────────────────────────────────────────────────────────────
 
@@ -124,4 +128,5 @@ struct ImageFrame {
     }
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::data

@@ -7,6 +7,7 @@
 #include <cstring>
 
 namespace thunderbird::data {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ─── Constructor / Destructor ───────────────────────────────────────────────
 
@@ -286,4 +287,5 @@ void Player::dispatch_camera(const ImageFrame& f) {
     if (image_cb_) image_cb_(f);
 }
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::data

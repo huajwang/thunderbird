@@ -54,7 +54,11 @@
 #include <mutex>
 #include <string>
 
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
+
 namespace thunderbird::data {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 /// Metadata about the device being recorded (optional).
 struct RecorderDeviceInfo {
@@ -71,7 +75,7 @@ struct RecorderStats {
     uint64_t total_bytes{0};          ///< approximate bytes written
 };
 
-class Recorder {
+class THUNDERBIRD_API Recorder {
 public:
     /// Construct a Recorder targeting the given file path.
     ///
@@ -127,4 +131,5 @@ private:
     RecorderStats stats_;
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::data

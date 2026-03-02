@@ -28,13 +28,18 @@
 #include "thunderbird/device_health_monitor.h"
 #include "thunderbird/clock_service.h"
 #include "thunderbird/lidar_frame_assembler.h"
+#include "thunderbird/diagnostics.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 #include <functional>
 
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
+
 namespace thunderbird {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 /// Configuration handed to DeviceManager at construction.
 struct DeviceConfig {
@@ -68,7 +73,7 @@ struct DeviceConfig {
     FrameAssemblerConfig frame_assembler;
 };
 
-class DeviceManager {
+class THUNDERBIRD_API DeviceManager {
 public:
     explicit DeviceManager(DeviceConfig config = {});
     ~DeviceManager();
@@ -151,9 +156,22 @@ public:
 
     uint64_t sync_bundles_produced() const;
 
+    // ── Diagnostics ─────────────────────────────────────────────────────────
+
+    /// Access the unified diagnostics manager.
+    DiagnosticsManager& diagnostics();
+    const DiagnosticsManager& diagnostics() const;
+
+    /// Convenience: latest diagnostics snapshot.
+    [[nodiscard]] DiagnosticsSnapshot diagnostics_snapshot() const;
+
+    /// Convenience: latest diagnostics as compact JSON.
+    [[nodiscard]] std::string diagnostics_json() const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird

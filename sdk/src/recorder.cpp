@@ -7,6 +7,7 @@
 #include <cstring>
 
 namespace thunderbird::data {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -238,4 +239,5 @@ void Recorder::finalise_header() {
     std::fflush(fp_);
 }
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::data

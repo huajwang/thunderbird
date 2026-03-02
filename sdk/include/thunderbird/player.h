@@ -68,7 +68,11 @@
 #include <thread>
 #include <vector>
 
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
+
 namespace thunderbird::data {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
@@ -95,7 +99,7 @@ struct PlayerStats {
 
 // ── Player class ─────────────────────────────────────────────────────────────
 
-class Player {
+class THUNDERBIRD_API Player {
 public:
     // Callback types — fire on the playback thread.
     using LidarCb  = std::function<void(const LidarFrame&)>;
@@ -191,4 +195,5 @@ private:
     PlayerStats         stats_;
 };
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::data

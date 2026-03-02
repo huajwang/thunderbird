@@ -31,7 +31,11 @@
 #include <memory>
 #include <vector>
 
+#include "thunderbird/export.h"
+#include "thunderbird/abi.h"
+
 namespace thunderbird::perception {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  Object class taxonomy
@@ -201,4 +205,5 @@ using TrackedObjectCallback = std::function<void(std::shared_ptr<const TrackedOb
 /// Callback for raw detection output (~10 Hz, before tracking).
 using DetectionCallback     = std::function<void(std::shared_ptr<const DetectionFrame>)>;
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::perception

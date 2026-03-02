@@ -24,6 +24,7 @@
 #include <vector>
 
 namespace thunderbird::perception {
+THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  CpuClusterDetector
@@ -329,4 +330,5 @@ std::unique_ptr<ObjectDetector> ObjectDetector::create(const PerceptionConfig& c
     return std::make_unique<CpuClusterDetector>();
 }
 
+THUNDERBIRD_ABI_NAMESPACE_END
 } // namespace thunderbird::perception
