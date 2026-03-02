@@ -177,7 +177,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=ci-docker-${{ matrix.variant }},ignore-error=true
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           image-ref: thunderbird-${{ matrix.variant }}:scan
           format: sarif
@@ -185,6 +185,8 @@ jobs:
           severity: CRITICAL,HIGH
           # Ignore unfixed vulnerabilities (base image noise)
           ignore-unfixed: true
+          # Pin engine version — v0.69.1 has a broken binary release
+          version: "v0.68.0"
 
       - name: Upload Trivy SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
@@ -221,7 +223,7 @@ jobs:
           fetch-depth: 0            # full history for commit scanning
 
       - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@v3.88.0
+        uses: trufflesecurity/trufflehog@v3.93.6
         continue-on-error: true     # don't fail pipeline on transient GHCR pulls
         with:
           extra_args: --only-verified --results=verified,unknown
@@ -243,7 +245,7 @@ jobs:
           persist-credentials: false
 
       - name: Run OpenSSF Scorecard
-        uses: ossf/scorecard-action@v2.4.0
+        uses: ossf/scorecard-action@v2.4.3
         with:
           results_file: scorecard.sarif
           results_format: sarif
