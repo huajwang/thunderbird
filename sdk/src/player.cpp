@@ -20,13 +20,19 @@ Player::Player(const std::string& file_path, PlayerConfig config)
 {}
 
 Player::~Player() {
-    if (playing()) stop();
+    stop();
 }
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
 bool Player::start() {
     if (playing()) return false;
+
+    // Join any previously-completed playback thread before launching a
+    // new one.  Without this, a fast-finishing thread (playback_speed=0)
+    // can clear playing_ before a second start() call, leaving thread_
+    // joinable and causing std::terminate on reassignment.
+    if (thread_.joinable()) thread_.join();
 
     fp_ = std::fopen(file_path_.c_str(), "rb");
     if (!fp_) return false;

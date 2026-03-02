@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -32,8 +33,8 @@ namespace tbd = thunderbird::data;
 namespace rec = thunderbird::recording;
 
 // Evaluate expression even under NDEBUG (prevents optimizing away side-effects).
-#define VERIFY(expr)      do { bool _v = static_cast<bool>(expr); assert(_v); (void)_v; } while(0)
-#define VERIFY_FALSE(expr) do { bool _v = static_cast<bool>(expr); assert(!_v); (void)_v; } while(0)
+#define VERIFY(expr)      do { if (!(expr)) { std::fprintf(stderr, "FAIL: %s @ %s:%d\n", #expr, __FILE__, __LINE__); std::abort(); } } while(0)
+#define VERIFY_FALSE(expr) do { if ((expr)) { std::fprintf(stderr, "FAIL: !(%s) @ %s:%d\n", #expr, __FILE__, __LINE__); std::abort(); } } while(0)
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

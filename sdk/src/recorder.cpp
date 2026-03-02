@@ -30,7 +30,7 @@ Recorder::Recorder(const std::string& file_path, RecorderDeviceInfo info)
 {}
 
 Recorder::~Recorder() {
-    if (recording()) stop();
+    stop();
 }
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
