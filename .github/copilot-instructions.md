@@ -9,7 +9,7 @@ context needed to make accurate, consistent contributions.
 
 Thunderbird is a **C++20 multi-sensor device SDK** (LiDAR + IMU + Camera) with
 Python bindings (pybind11), ROS 2 bridge, Debian packaging, and Docker images.
-Current phase: **PoC** — simulated sensor backends only, no real hardware yet.
+Current phase: **Phase 4** — perception-ready extensions.
 
 **Version**: defined in `CMakeLists.txt` → `project(thunderbird_sdk VERSION X.Y.Z)`.
 
@@ -312,13 +312,13 @@ See `SECURITY.md` for vulnerability reporting policy.
 - Device health monitoring (DeviceHealthMonitor)
 - Reconnection/watchdog
 
-### Phase 3 — Production hardening (next)
+### Phase 3 — Production hardening ✅
 - Configurable logging (spdlog)
 - Thread-safe diagnostics
 - API versioning & ABI stability
 - Doxygen documentation
 
-### Phase 4 — Perception-ready extensions
+### Phase 4 — Perception-ready extensions (next)
 - GPU point cloud preprocessing
 - Camera calibration storage
 - Multi-device support

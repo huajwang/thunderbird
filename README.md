@@ -1,8 +1,8 @@
-# Thunderbird SDK — Multi-Sensor Device SDK (PoC)
+# Thunderbird SDK — Multi-Sensor Device SDK
 
-A C++17 SDK for interfacing with a fused **LiDAR + IMU + Camera** sensor device.
-This PoC focuses on **SDK infrastructure, data flow, and time synchronization** —
-no AI/perception algorithms are included yet.
+A C++20 SDK for interfacing with a fused **LiDAR + IMU + Camera** sensor device.
+Includes production-hardened logging, diagnostics, ABI versioning, and
+comprehensive documentation.
 
 ---
 
@@ -69,7 +69,7 @@ thunderbird/
 
 ### Prerequisites
 
-- **C++17** compiler (GCC 9+, Clang 10+, MSVC 2019+)
+- **C++20** compiler (GCC 10+, Clang 11+, MSVC 2019+)
 - **CMake** ≥ 3.16
 - *(Optional)* **pybind11** for Python bindings
 - *(Optional)* **ROS 2 Humble/Iron** for the bridge node

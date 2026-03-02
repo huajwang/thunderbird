@@ -1,3 +1,20 @@
+thunderbird-sdk (0.3.0) jammy; urgency=medium
+
+  * Phase 3: Production hardening
+  * Configurable logging (spdlog) with per-module log levels
+  * Thread-safe DiagnosticsManager with snapshot API
+  * ABI namespace versioning (abi_v0)
+  * THUNDERBIRD_API export annotations for shared library
+  * Comprehensive documentation (16 files)
+
+ -- Thunderbird SDK Team <sdk@thunderbird.dev>  Sun, 01 Mar 2026 00:00:00 +0000
+
+thunderbird-sdk (0.2.0) jammy; urgency=medium
+
+  * Phase 2: Hardware integration
+
+ -- Thunderbird SDK Team <sdk@thunderbird.dev>  Mon, 24 Feb 2026 00:00:00 +0000
+
 thunderbird-sdk (0.1.0) jammy; urgency=medium
 
   * Initial release.
