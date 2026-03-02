@@ -24,6 +24,10 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:            # manual trigger for ad-hoc scans
 
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
 # ── Minimal default permissions — each job escalates only what it needs ──────
 permissions:
   contents: read
