@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Test — Phase 2: VLP-16 decoder, DecoderFactory, SequenceTracker,
-//                 ClockService, LidarFrameAssembler
+//                 ClockService, LidarFrameAssembler,
+//                 ClockService↔SyncEngine integration
 // ─────────────────────────────────────────────────────────────────────────────
 #include "thunderbird/sequence_tracker.h"
 #include "thunderbird/packet_decoder.h"
@@ -9,6 +10,8 @@
 #include "thunderbird/clock_service.h"
 #include "thunderbird/lidar_frame_assembler.h"
 #include "thunderbird/packet_parser.h"
+#include "thunderbird/sync_engine.h"
+#include "thunderbird/time_sync.h"
 #include "thunderbird/types.h"
 
 #include <cassert>
@@ -16,6 +19,9 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <thread>
+#include <atomic>
+#include <chrono>
 #include <vector>
 
 using namespace thunderbird;
@@ -668,6 +674,111 @@ void test_assembler_timed_mode() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  ClockService ↔ SyncEngine integration tests
+// ═════════════════════════════════════════════════════════════════════════════
+
+void test_sync_engine_uses_clock_service() {
+    TEST_CASE("SyncEngine — uses ClockService for matching");
+
+    // Create a ClockService with a known offset (hw → host shift of 10ms)
+    ClockServiceConfig ccfg;
+    ccfg.ols_window = 10;
+    ClockService clk(ccfg);
+
+    // Calibrate: host = hw + 0  (identity for simplicity)
+    for (int i = 0; i < 5; ++i) {
+        clk.observe((i + 1) * 1'000'000LL, (i + 1) * 1'000'000LL);
+    }
+    ASSERT_TRUE(clk.is_calibrated());
+
+    // Wire ClockService into SyncEngine
+    SyncConfig sc;
+    sc.tolerance_ns = 50'000'000;
+    sc.poll_interval_ms = 2;
+    SyncEngine engine(sc);
+    engine.set_clock_service(&clk);
+
+    std::atomic<int> count{0};
+    engine.set_callback([&](std::shared_ptr<const SyncBundle>) { ++count; });
+    engine.start();
+
+    // Feed matching data
+    auto lidar = std::make_shared<LidarFrame>();
+    lidar->timestamp = Timestamp{100'000'000};
+    lidar->points.resize(10);
+
+    auto imu = std::make_shared<ImuSample>();
+    imu->timestamp = Timestamp{101'000'000};
+
+    auto cam = std::make_shared<CameraFrame>();
+    cam->timestamp = Timestamp{105'000'000};
+    cam->width = 2; cam->height = 2;
+
+    engine.feed_lidar(lidar);
+    engine.feed_imu(imu);
+    engine.feed_camera(cam);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    engine.stop();
+
+    ASSERT_TRUE(count >= 1);
+    PASS();
+}
+
+void test_time_sync_engine_uses_clock_service() {
+    TEST_CASE("TimeSyncEngine — reads drift from ClockService");
+
+    // Create a ClockService and calibrate with known drift
+    ClockServiceConfig ccfg;
+    ccfg.ols_window = 20;
+    ClockService clk(ccfg);
+
+    // Feed observations with 10 ppm drift → drift_ns_per_sec ≈ 10000
+    for (int i = 0; i < 10; ++i) {
+        int64_t hw = static_cast<int64_t>(i) * 1'000'000'000LL;
+        int64_t host = hw + static_cast<int64_t>(i) * 10'000;
+        clk.observe(hw, host);
+    }
+    ASSERT_TRUE(clk.is_calibrated());
+
+    // Wire into TimeSyncEngine
+    data::TimeSyncConfig tcfg;
+    tcfg.camera_tolerance_ns = 1'000'000'000;
+    tcfg.poll_interval_ms = 1;
+    tcfg.drift_window = 10;
+    tcfg.drift_warn_ns_per_sec = 500'000;
+
+    data::TimeSyncEngine engine(tcfg);
+    engine.set_clock_service(&clk);
+
+    // Feed some data to produce a frame
+    data::LidarFrame lf;
+    lf.timestamp_ns = 0;
+    lf.sequence = 0;
+    lf.points.push_back({0, 0, 0, 1.0f, 0});
+
+    data::ImageFrame cf;
+    cf.timestamp_ns = 1'000'000;
+    cf.width = 2; cf.height = 2; cf.stride = 6;
+    cf.format = data::PixelFormat::RGB8;
+    cf.data = std::make_shared<const std::vector<uint8_t>>(12, 128);
+
+    engine.feedLidar(lf);
+    engine.feedCamera(cf);
+
+    engine.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    engine.stop();
+
+    auto st = engine.stats();
+    ASSERT_TRUE(st.frames_produced >= 1);
+    // Drift should come from ClockService, not from internal OLS
+    // ClockService drift is ~10000 ns/s for the observations above
+    ASSERT_TRUE(std::abs(st.drift_ns_per_sec) > 1000);
+    PASS();
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 
 int main() {
     std::puts("=== Phase 2: Hardware Integration Tests ===\n");
@@ -712,6 +823,10 @@ int main() {
     test_assembler_stats();
     test_assembler_reset();
     test_assembler_timed_mode();
+
+    std::puts("\n--- ClockService ↔ SyncEngine Integration ---");
+    test_sync_engine_uses_clock_service();
+    test_time_sync_engine_uses_clock_service();
 
     std::printf("\n%d / %d tests passed\n", g_tests_passed, g_tests_run);
     if (g_tests_passed == g_tests_run) {

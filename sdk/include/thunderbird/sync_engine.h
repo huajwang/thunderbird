@@ -8,6 +8,7 @@
 
 #include "thunderbird/types.h"
 #include "thunderbird/ring_buffer.h"
+#include "thunderbird/clock_service.h"
 
 #include <algorithm>
 #include <atomic>
@@ -30,6 +31,10 @@ struct SyncConfig {
 
 /// The SyncEngine collects incoming sensor samples in short queues,
 /// then tries to combine them into time-aligned SyncBundles.
+///
+/// When a ClockService is injected via set_clock_service(), the engine
+/// uses unified timestamps (drift-compensated) for matching instead of
+/// raw host-side timestamps.
 class SyncEngine {
 public:
     explicit SyncEngine(SyncConfig config = {})
@@ -57,6 +62,12 @@ public:
         trim(camera_q_);
     }
 
+    // ── Clock service injection ──────────────────────────────────────────────
+
+    /// Inject the shared ClockService for drift-compensated matching.
+    /// Lifetime: the ClockService must outlive this SyncEngine.
+    void set_clock_service(const ClockService* cs) { clock_service_ = cs; }
+
     // ── Registration ────────────────────────────────────────────────────────
 
     void set_callback(SyncCallback cb) { callback_ = std::move(cb); }
@@ -82,22 +93,37 @@ private:
         while (dq.size() > max_size) dq.pop_front();
     }
 
-    /// Timestamp accessor helpers
+    /// Timestamp accessor helpers — raw (host-side) nanoseconds.
     static Timestamp ts(const std::shared_ptr<const LidarFrame>& p)  { return p->timestamp; }
     static Timestamp ts(const std::shared_ptr<const ImuSample>& p)   { return p->timestamp; }
     static Timestamp ts(const std::shared_ptr<const CameraFrame>& p) { return p->timestamp; }
 
+    /// Resolve a raw timestamp through the ClockService when available.
+    /// Falls back to the raw host-side value when no ClockService is set
+    /// or when it is not yet calibrated.
+    int64_t resolve(Timestamp raw) const {
+        if (clock_service_) {
+            // Use hw_ns=host_ns since Phase-1 frames only carry host timestamps.
+            // When real HW timestamps are available (Phase 2), the frame
+            // should carry both, and this call becomes:
+            //   clock_service_->unified_timestamp(hw_ns, host_ns)
+            return clock_service_->unified_timestamp(raw.nanoseconds, raw.nanoseconds);
+        }
+        return raw.nanoseconds;
+    }
+
     /// Find closest element to `ref` and return it + its index, or nullptr.
     template <typename Deque>
-    static auto find_nearest(const Deque& dq, Timestamp ref, int64_t tol_ns)
+    auto find_nearest(const Deque& dq, Timestamp ref, int64_t tol_ns) const
         -> typename Deque::value_type
     {
         if (dq.empty()) return nullptr;
         typename Deque::value_type best = nullptr;
         int64_t best_diff = std::numeric_limits<int64_t>::max();
+        const int64_t ref_resolved = resolve(ref);
 
         for (auto& item : dq) {
-            int64_t diff = std::abs(ts(item).nanoseconds - ref.nanoseconds);
+            int64_t diff = std::abs(resolve(ts(item)) - ref_resolved);
             if (diff < best_diff) {
                 best_diff = diff;
                 best = item;
@@ -153,6 +179,7 @@ private:
 
     SyncConfig  config_;
     SyncCallback callback_;
+    const ClockService* clock_service_{nullptr};
 
     std::mutex mu_;
     std::deque<std::shared_ptr<const LidarFrame>>  lidar_q_;

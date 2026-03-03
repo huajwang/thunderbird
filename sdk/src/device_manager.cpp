@@ -78,6 +78,10 @@ struct DeviceManager::Impl {
           frame_assembler(config.frame_assembler),
           data_layer(data::DataLayerConfig{})
     {
+        // ── Wire shared ClockService into all sync engines ──────────────
+        sync_engine.set_clock_service(&clock_service);
+        time_sync_engine.set_clock_service(&clock_service);
+
         // ── Register diagnostics collectors ─────────────────────────────
 
         // Time-sync stats.
