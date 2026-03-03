@@ -680,51 +680,91 @@ void test_assembler_timed_mode() {
 void test_sync_engine_uses_clock_service() {
     TEST_CASE("SyncEngine — uses ClockService for matching");
 
-    // Create a ClockService with a known offset (hw → host shift of 10ms)
+    // ── Calibrate ClockService with identity mapping (a=1, b=0) ─────
     ClockServiceConfig ccfg;
     ccfg.ols_window = 10;
     ClockService clk(ccfg);
-
-    // Calibrate: host = hw + 0  (identity for simplicity)
     for (int i = 0; i < 5; ++i) {
         clk.observe((i + 1) * 1'000'000LL, (i + 1) * 1'000'000LL);
     }
     ASSERT_TRUE(clk.is_calibrated());
 
-    // Wire ClockService into SyncEngine
+    // ── Build a SyncEngine with tight tolerance ─────────────────────
     SyncConfig sc;
-    sc.tolerance_ns = 50'000'000;
+    sc.tolerance_ns = 20'000'000;   // 20 ms
     sc.poll_interval_ms = 2;
-    SyncEngine engine(sc);
-    engine.set_clock_service(&clk);
 
-    std::atomic<int> count{0};
-    engine.set_callback([&](std::shared_ptr<const SyncBundle>) { ++count; });
-    engine.start();
+    // ── Test 1: WITHOUT ClockService, host timestamps are far apart
+    //            (200 ms) → should NOT produce a bundle. ─────────────
+    {
+        SyncEngine engine(sc);
+        // No set_clock_service() — resolve() falls back to host_timestamp.
 
-    // Feed matching data (both hw and host timestamps)
-    auto lidar = std::make_shared<LidarFrame>();
-    lidar->timestamp = Timestamp{100'000'000};
-    lidar->host_timestamp = Timestamp{100'050'000};  // host ~50µs after hw
-    lidar->points.resize(10);
+        std::atomic<int> count{0};
+        engine.set_callback([&](std::shared_ptr<const SyncBundle>) { ++count; });
+        engine.start();
 
-    auto imu = std::make_shared<ImuSample>();
-    imu->timestamp = Timestamp{101'000'000};
-    imu->host_timestamp = Timestamp{101'050'000};
+        // HW timestamps are close (5 ms apart), but host timestamps
+        // are 200 ms apart — well beyond the 20 ms tolerance.
+        auto lidar = std::make_shared<LidarFrame>();
+        lidar->timestamp      = Timestamp{100'000'000};
+        lidar->host_timestamp = Timestamp{1'000'000'000};  // 1.0 s
+        lidar->points.resize(10);
 
-    auto cam = std::make_shared<CameraFrame>();
-    cam->timestamp = Timestamp{105'000'000};
-    cam->host_timestamp = Timestamp{105'050'000};
-    cam->width = 2; cam->height = 2;
+        auto imu = std::make_shared<ImuSample>();
+        imu->timestamp      = Timestamp{101'000'000};      // hw +1 ms
+        imu->host_timestamp = Timestamp{1'200'000'000};     // host +200 ms
 
-    engine.feed_lidar(lidar);
-    engine.feed_imu(imu);
-    engine.feed_camera(cam);
+        auto cam = std::make_shared<CameraFrame>();
+        cam->timestamp      = Timestamp{105'000'000};       // hw +5 ms
+        cam->host_timestamp = Timestamp{1'200'000'000};     // host +200 ms
+        cam->width = 2; cam->height = 2;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    engine.stop();
+        engine.feed_lidar(lidar);
+        engine.feed_imu(imu);
+        engine.feed_camera(cam);
 
-    ASSERT_TRUE(count >= 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        engine.stop();
+
+        ASSERT_TRUE(count == 0);  // must NOT match — host gap > tolerance
+    }
+
+    // ── Test 2: WITH ClockService, unified_timestamp() maps the HW
+    //            timestamps (which are 5 ms apart) → SHOULD match. ───
+    {
+        SyncEngine engine(sc);
+        engine.set_clock_service(&clk);
+
+        std::atomic<int> count{0};
+        engine.set_callback([&](std::shared_ptr<const SyncBundle>) { ++count; });
+        engine.start();
+
+        // Same frames as above: hw close, host far apart.
+        auto lidar = std::make_shared<LidarFrame>();
+        lidar->timestamp      = Timestamp{100'000'000};
+        lidar->host_timestamp = Timestamp{1'000'000'000};
+        lidar->points.resize(10);
+
+        auto imu = std::make_shared<ImuSample>();
+        imu->timestamp      = Timestamp{101'000'000};
+        imu->host_timestamp = Timestamp{1'200'000'000};
+
+        auto cam = std::make_shared<CameraFrame>();
+        cam->timestamp      = Timestamp{105'000'000};
+        cam->host_timestamp = Timestamp{1'200'000'000};
+        cam->width = 2; cam->height = 2;
+
+        engine.feed_lidar(lidar);
+        engine.feed_imu(imu);
+        engine.feed_camera(cam);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        engine.stop();
+
+        ASSERT_TRUE(count >= 1);  // MUST match — ClockService uses hw timestamps
+    }
+
     PASS();
 }
 
