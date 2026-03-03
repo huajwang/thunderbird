@@ -702,16 +702,19 @@ void test_sync_engine_uses_clock_service() {
     engine.set_callback([&](std::shared_ptr<const SyncBundle>) { ++count; });
     engine.start();
 
-    // Feed matching data
+    // Feed matching data (both hw and host timestamps)
     auto lidar = std::make_shared<LidarFrame>();
     lidar->timestamp = Timestamp{100'000'000};
+    lidar->host_timestamp = Timestamp{100'050'000};  // host ~50µs after hw
     lidar->points.resize(10);
 
     auto imu = std::make_shared<ImuSample>();
     imu->timestamp = Timestamp{101'000'000};
+    imu->host_timestamp = Timestamp{101'050'000};
 
     auto cam = std::make_shared<CameraFrame>();
     cam->timestamp = Timestamp{105'000'000};
+    cam->host_timestamp = Timestamp{105'050'000};
     cam->width = 2; cam->height = 2;
 
     engine.feed_lidar(lidar);
