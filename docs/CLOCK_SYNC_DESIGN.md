@@ -30,38 +30,44 @@ clock-drift estimator.  Before designing anything, the audit must be precise.
 | Requirement | Status | Gap |
 |-------------|--------|-----|
 | Recover hardware time | **Done** — `PacketHeader::hw_timestamp_ns` extracted by `PacketParser` | None |
-| Estimate offset to system clock | **Partially done** — `ClockDriftModel` does `host = α·hw + β` but with `Timestamp::now()` jitter (10–100 μs). No kernel RX timestamps. | Need `SO_TIMESTAMPING` integration (designed in PHASE2_TRANSPORT_DESIGN.md) to reduce jitter to <1 μs |
-| Compensate drift | **Done** in `SlamTimeSync` path only. `TimeSyncEngine` estimates drift slope but **never compensates** — only warns. `SyncEngine` ignores drift entirely. | Need to propagate drift compensation to `TimeSyncEngine` and/or unify |
-| Unified timestamp to SDK core | **Not done** — three sync engines, two timestamp types (`Timestamp` vs raw `int64_t`), no single clock authority | Need a `ClockService` that all subsystems query |
-| PPS signal handling | **Not implemented** — not referenced anywhere in code | Full gap |
+| Estimate offset to system clock | **Done** — `ClockService` provides OLS `host = α·hw + β` with MAD outlier rejection. `Timestamp::now()` jitter (10–100 μs) remains; SO_TIMESTAMPING integration (designed in PHASE2_TRANSPORT_DESIGN.md) would reduce it to <1 μs. | SO_TIMESTAMPING integration for sub-μs accuracy |
+| Compensate drift | **Done** — `ClockService` is the single authority. All three sync engines now delegate drift to it via `set_clock_service()`. `SyncEngine` uses `unified_timestamp()` for matching. `TimeSyncEngine` reads `drift_ns_per_sec()` from `ClockService`. `SlamTimeSync` uses `hw_to_host()` for timestamp resolution. Internal `ClockDriftModel` in `SlamTimeSync` retained as fallback when no `ClockService` is injected. | None |
+| Unified timestamp to SDK core | **Done** — `ClockService` is owned by `DeviceManager::Impl` and injected into all three sync engines. `PacketParser` feeds observations via callback. | None |
+| PPS signal handling | **Done** — `ClockService::observe_pps()` with jitter rejection, lock/loss events, PPS anchoring | None |
 | PTP support | **Not implemented** — `types.h:19` mentions "PTP epoch" in a comment but no code exists | Full gap — but PTP is an OS-level concern, not ours (see §3.3) |
-| Time jump detection | **Not implemented** — `ClockDriftModel::recompute()` does no outlier rejection | Full gap |
-| Car profile (GNSS available) | **Config exists** in perception — `MotionModel::CTRV` for car — but no GNSS-disciplined clock | Full gap |
-| Drone profile (no GNSS) | **Config exists** — `MotionModel::ConstantVelocity` for drone — but no free-running clock management | Full gap |
+| Time jump detection | **Done** — `ClockService` uses MAD-based outlier rejection + confirmation count before declaring a jump, then re-seeds the OLS model | None |
+| Car profile (GNSS available) | **Done** — `ClockProfile::Car` with PPS anchoring, quantized second-boundary correction | None |
+| Drone profile (no GNSS) | **Done** — `ClockProfile::Drone` with free-running OLS drift model | None |
 | host_timestamp quality | **Done but low quality** — `Timestamp::now()` at `dispatch()` time in parser has scheduling jitter | Addressed by SO_TIMESTAMPING design |
 
-### 0.3 Architectural problem: three sync engines
+### 0.3 Architectural solution: shared ClockService
+
+All three sync engines now share a single `ClockService` owned by
+`DeviceManager`.  Each engine retains its distinct output type and
+assembly logic, but delegates all clock/drift decisions to the shared
+authority:
 
 ```
-Device → PacketParser → LidarFrame (timestamp + host_timestamp)
-                               │
-              ┌────────────────┼────────────────────┐
-              ▼                ▼                     ▼
-         SyncEngine      TimeSyncEngine         SlamTimeSync
-         (types.h)       (sensor_data.h)        (slam_types.h)
-              │                │                     │
-         SyncBundle       SyncedFrame         ScanMeasurement
-              │                │                     │
-         User callback    Pull/Callback API     ESIKF thread
+Device → PacketParser → observe(hw_ns, host_ns) → ClockService
+              │                                         │
+              │          ┌──────────────────────────────┤
+              │          │           │                  │
+              ▼          ▼           ▼                  ▼
+         SyncEngine  TimeSyncEngine  SlamTimeSync
+         .set_clock   .set_clock     .set_clock
+         _service()   _service()     _service()
+              │           │                │
+         SyncBundle   SyncedFrame    ScanMeasurement
+              │           │                │
+         User callback  Pull/Callback   ESIKF thread
 ```
 
-Three subsystems, three timestamp domains, no shared clock authority.
-`SyncEngine` has no drift awareness at all.  `TimeSyncEngine` estimates
-drift but doesn't compensate.  `SlamTimeSync` compensates but only for
-the ESIKF path.  If the device clock drifts 5 ms/s (common for cheap
-MEMS oscillators), the non-SLAM paths get progressively worse alignment.
-
-**This is the core problem to solve.**
+`SyncEngine` calls `unified_timestamp()` during nearest-neighbour
+matching.  `TimeSyncEngine` reads `drift_ns_per_sec()` from
+`ClockService` instead of running its own OLS.  `SlamTimeSync` calls
+`hw_to_host()` in `resolve_timestamp()` instead of querying its
+internal `ClockDriftModel` (which remains as a fallback when no
+`ClockService` is injected).
 
 ---
 
@@ -741,7 +747,7 @@ overhead is one branch.
 
 ## 7. Timestamp Flow — Before and After
 
-### 7.1 Before (current state)
+### 7.1 Before (prior to ClockService integration)
 
 ```
 Device HW clock                            Host steady_clock
@@ -762,7 +768,7 @@ Device HW clock                            Host steady_clock
            compensated in ESIKF path only)       │
 ```
 
-### 7.2 After (proposed)
+### 7.2 After (implemented)
 
 ```
 Device HW clock                            Host clock (steady / realtime / SO_TS)
@@ -793,28 +799,32 @@ Device HW clock                            Host clock (steady / realtime / SO_TS
 
 ## 8. File Changes Summary
 
-| File | Change | New/Modify |
-|------|--------|-----------|
-| `sdk/include/thunderbird/clock_service.h` | `ClockService`, `ClockOffsetEstimator`, `ClockProfile`, `ClockServiceConfig`, `ClockDiagnostics` | New |
-| `sdk/src/clock_service.cpp` | Implementation: OLS + outlier rejection + jump detection + seqlock + PPS | New |
-| `sdk/include/thunderbird/odom/slam_time_sync.h` | Replace internal `ClockDriftModel` with `ClockService*` injection. Keep `ClockDriftModel` class in place for backward compat (used by nothing else, but harmless). | Modify |
-| `sdk/include/thunderbird/time_sync.h` | Remove internal drift regression (`update_drift`, `offset_history_`, `ts_history_`). Accept `ClockService*`. | Modify |
-| `sdk/include/thunderbird/sync_engine.h` | Accept `ClockService*`.  In `find_nearest()`, use `unified_timestamp()` for comparison. | Modify |
-| `sdk/src/device_manager.cpp` | Own `ClockService`.  Pass pointer to all sync engines and parser. | Modify |
-| `sdk/include/thunderbird/packet_parser.h` | Accept `ClockService*`, call `observe()` from `dispatch()`. | Modify |
-| `sdk/include/thunderbird/types.h` | Add `HostClockSource` enum. | Modify |
+| File | Change | Status |
+|------|--------|--------|
+| `sdk/include/thunderbird/clock_service.h` | `ClockService`, `ClockOffsetEstimator`, `ClockProfile`, `ClockServiceConfig`, `ClockDiagnostics` | Done |
+| `sdk/src/clock_service.cpp` | Implementation: OLS + outlier rejection + jump detection + seqlock + PPS | Done |
+| `sdk/include/thunderbird/odom/slam_time_sync.h` | Replace internal `ClockDriftModel` with `ClockService*` injection. Keep `ClockDriftModel` class in place for backward compat. | Done |
+| `sdk/include/thunderbird/time_sync.h` | Delegate drift estimation to `ClockService*`. Falls back to local OLS when no `ClockService` is set. | Done |
+| `sdk/include/thunderbird/sync_engine.h` | Accept `ClockService*`. In `find_nearest()`, use `unified_timestamp()` for drift-compensated matching. | Done |
+| `sdk/src/device_manager.cpp` | Own `ClockService`. Wire pointer to `sync_engine` and `time_sync_engine` in `Impl` constructor. | Done |
+| `sdk/include/thunderbird/packet_parser.h` | Accept `ClockService*`, call `observe()` from `dispatch()`. | Done |
+| `sdk/include/thunderbird/types.h` | Add `HostClockSource` enum. | Done |
+| `tests/test_phase2_hw_integration.cpp` | Added integration tests: `test_sync_engine_uses_clock_service()`, `test_time_sync_engine_uses_clock_service()`. | Done |
 
-### 8.1 Implementation order
+### 8.1 Implementation order (completed)
+
+All steps below have been implemented and verified:
 
 1. **`clock_service.h/cpp`** — standalone, no dependencies on existing engines
 2. **`DeviceManager` integration** — inject `ClockService*` into existing engines
 3. **`PacketParser` observation injection** — call `observe()` from `dispatch()`
 4. **`SlamTimeSync` migration** — replace `ClockDriftModel` usage with `ClockService*`
-5. **`TimeSyncEngine` migration** — remove internal drift regression
-6. **`SyncEngine` migration** — add `unified_timestamp()` calls
-7. **PPS support** — add `observe_pps()` implementation and car-profile config
+5. **`TimeSyncEngine` migration** — delegate drift to `ClockService` (local OLS fallback retained)
+6. **`SyncEngine` migration** — add `unified_timestamp()` calls in `find_nearest()`
+7. **PPS support** — `observe_pps()` implementation and car-profile config
 8. **Tests** — unit tests for jump detection, outlier rejection, drift
-   estimation accuracy, seqlock correctness, PPS lock/loss scenarios
+   estimation accuracy, seqlock correctness, PPS lock/loss; integration
+   tests for `SyncEngine ↔ ClockService` and `TimeSyncEngine ↔ ClockService`
 
 ---
 

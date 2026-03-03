@@ -31,13 +31,16 @@ int main() {
 
     auto lidar = std::make_shared<LidarFrame>();
     lidar->timestamp = t;
+    lidar->host_timestamp = t;
     lidar->points.resize(100);
 
     auto imu = std::make_shared<ImuSample>();
     imu->timestamp = {t.nanoseconds + 1'000'000}; // +1 ms
+    imu->host_timestamp = {t.nanoseconds + 1'000'000};
 
     auto cam = std::make_shared<CameraFrame>();
     cam->timestamp = {t.nanoseconds + 5'000'000}; // +5 ms
+    cam->host_timestamp = {t.nanoseconds + 5'000'000};
     cam->width = 640; cam->height = 480;
 
     engine.feed_lidar(lidar);

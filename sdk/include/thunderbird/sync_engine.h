@@ -8,6 +8,7 @@
 
 #include "thunderbird/types.h"
 #include "thunderbird/ring_buffer.h"
+#include "thunderbird/clock_service.h"
 
 #include <algorithm>
 #include <atomic>
@@ -30,6 +31,10 @@ struct SyncConfig {
 
 /// The SyncEngine collects incoming sensor samples in short queues,
 /// then tries to combine them into time-aligned SyncBundles.
+///
+/// When a ClockService is injected via set_clock_service(), the engine
+/// uses unified timestamps (drift-compensated) for matching instead of
+/// raw host-side timestamps.
 class SyncEngine {
 public:
     explicit SyncEngine(SyncConfig config = {})
@@ -57,6 +62,12 @@ public:
         trim(camera_q_);
     }
 
+    // ── Clock service injection ──────────────────────────────────────────────
+
+    /// Inject the shared ClockService for drift-compensated matching.
+    /// Lifetime: the ClockService must outlive this SyncEngine.
+    void set_clock_service(const ClockService* cs) { clock_service_ = cs; }
+
     // ── Registration ────────────────────────────────────────────────────────
 
     void set_callback(SyncCallback cb) { callback_ = std::move(cb); }
@@ -82,22 +93,40 @@ private:
         while (dq.size() > max_size) dq.pop_front();
     }
 
-    /// Timestamp accessor helpers
-    static Timestamp ts(const std::shared_ptr<const LidarFrame>& p)  { return p->timestamp; }
-    static Timestamp ts(const std::shared_ptr<const ImuSample>& p)   { return p->timestamp; }
-    static Timestamp ts(const std::shared_ptr<const CameraFrame>& p) { return p->timestamp; }
+    /// Timestamp accessor helpers.
+    static Timestamp ts(const std::shared_ptr<const LidarFrame>& p)       { return p->timestamp; }
+    static Timestamp ts(const std::shared_ptr<const ImuSample>& p)        { return p->timestamp; }
+    static Timestamp ts(const std::shared_ptr<const CameraFrame>& p)      { return p->timestamp; }
+    static Timestamp host_ts(const std::shared_ptr<const LidarFrame>& p)  { return p->host_timestamp; }
+    static Timestamp host_ts(const std::shared_ptr<const ImuSample>& p)   { return p->host_timestamp; }
+    static Timestamp host_ts(const std::shared_ptr<const CameraFrame>& p) { return p->host_timestamp; }
+
+    /// Resolve a (hw, host) timestamp pair through the ClockService.
+    /// When calibrated: applies the linear model to the HW timestamp.
+    /// When not calibrated: falls back to the host timestamp.
+    /// When no ClockService: returns the host timestamp directly.
+    int64_t resolve(Timestamp hw, Timestamp host) const {
+        if (clock_service_) {
+            return clock_service_->unified_timestamp(hw.nanoseconds,
+                                                    host.nanoseconds);
+        }
+        return host.nanoseconds;
+    }
 
     /// Find closest element to `ref` and return it + its index, or nullptr.
     template <typename Deque>
-    static auto find_nearest(const Deque& dq, Timestamp ref, int64_t tol_ns)
+    auto find_nearest(const Deque& dq,
+                      Timestamp ref_hw, Timestamp ref_host,
+                      int64_t tol_ns) const
         -> typename Deque::value_type
     {
         if (dq.empty()) return nullptr;
         typename Deque::value_type best = nullptr;
         int64_t best_diff = std::numeric_limits<int64_t>::max();
+        const int64_t ref_resolved = resolve(ref_hw, ref_host);
 
         for (auto& item : dq) {
-            int64_t diff = std::abs(ts(item).nanoseconds - ref.nanoseconds);
+            int64_t diff = std::abs(resolve(ts(item), host_ts(item)) - ref_resolved);
             if (diff < best_diff) {
                 best_diff = diff;
                 best = item;
@@ -127,22 +156,23 @@ private:
 
         // Use the oldest un-consumed LiDAR frame as reference.
         auto ref = lidar_q_.front();
-        Timestamp ref_ts = ts(ref);
+        Timestamp ref_hw   = ts(ref);
+        Timestamp ref_host = host_ts(ref);
 
-        auto best_imu    = find_nearest(imu_q_,    ref_ts, config_.tolerance_ns);
-        auto best_camera = find_nearest(camera_q_, ref_ts, config_.tolerance_ns);
+        auto best_imu    = find_nearest(imu_q_,    ref_hw, ref_host, config_.tolerance_ns);
+        auto best_camera = find_nearest(camera_q_, ref_hw, ref_host, config_.tolerance_ns);
 
         if (!best_camera) return; // camera hasn't arrived yet in tolerance
 
         // Build the bundle
         auto bundle = std::make_shared<SyncBundle>();
-        bundle->reference_time = ref_ts;
+        bundle->reference_time = ref_hw;
         bundle->lidar  = ref;
         bundle->imu    = best_imu;   // may be nullptr if IMU not yet ready
         bundle->camera = best_camera;
 
         // Evict consumed data (everything at or before ref)
-        Timestamp cutoff = {ref_ts.nanoseconds + 1};
+        Timestamp cutoff = {ref_hw.nanoseconds + 1};
         lidar_q_.pop_front();
         evict_before(imu_q_, cutoff);
         evict_before(camera_q_, cutoff);
@@ -153,6 +183,7 @@ private:
 
     SyncConfig  config_;
     SyncCallback callback_;
+    const ClockService* clock_service_{nullptr};
 
     std::mutex mu_;
     std::deque<std::shared_ptr<const LidarFrame>>  lidar_q_;

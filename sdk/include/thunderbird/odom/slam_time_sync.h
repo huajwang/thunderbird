@@ -94,6 +94,7 @@
 
 #include "thunderbird/odom/slam_types.h"
 #include "thunderbird/ring_buffer.h"
+#include "thunderbird/clock_service.h"
 
 #include <algorithm>
 #include <array>
@@ -479,6 +480,13 @@ public:
     SlamTimeSync(const SlamTimeSync&) = delete;
     SlamTimeSync& operator=(const SlamTimeSync&) = delete;
 
+    // ── Clock service injection ────────────────────────────────────────────
+
+    /// Inject the shared ClockService for drift-compensated timestamp
+    /// resolution.  When set, the internal ClockDriftModel is bypassed.
+    /// Lifetime: the ClockService must outlive this SlamTimeSync.
+    void set_clock_service(const ClockService* cs) { clock_service_ = cs; }
+
     // ── Input: called from sensor threads ───────────────────────────────
 
     /// Feed an IMU sample.  Thread-safe (takes spinlock, held < 1 µs).
@@ -496,7 +504,10 @@ public:
         ++stats_.imu_samples_ingested;
 
         // ── Clock drift observation ─────────────────────────────────
-        if (config_.enable_drift_compensation && host_ns > 0) {
+        // When a ClockService is available, it receives observations
+        // from the PacketParser directly — no need to feed here.
+        // Fallback: use local ClockDriftModel.
+        if (!clock_service_ && config_.enable_drift_compensation && host_ns > 0) {
             drift_model_.add_observation(sample.timestamp_ns, host_ns);
         }
 
@@ -528,7 +539,8 @@ public:
                     int64_t host_ns = 0) {
         std::lock_guard<std::mutex> lk(lidar_mu_);
 
-        if (config_.enable_drift_compensation && host_ns > 0) {
+        // Fallback drift observation (only when no ClockService).
+        if (!clock_service_ && config_.enable_drift_compensation && host_ns > 0) {
             drift_model_.add_observation(scan->timestamp_ns, host_ns);
         }
 
@@ -602,7 +614,10 @@ public:
     [[nodiscard]] SlamTimeSyncStats stats() const {
         std::lock_guard<std::mutex> lk(imu_mu_);
         auto s = stats_;
-        s.drift_ns_per_sec = drift_model_.drift_ns_per_sec();
+        // Prefer ClockService drift; fall back to local model.
+        s.drift_ns_per_sec = clock_service_
+            ? clock_service_->drift_ns_per_sec()
+            : drift_model_.drift_ns_per_sec();
         return s;
     }
 
@@ -648,8 +663,16 @@ private:
 
     /// Resolve a hardware timestamp to the canonical clock domain,
     /// applying drift compensation if enabled and calibrated.
+    /// Prefers ClockService; falls back to local ClockDriftModel.
     [[nodiscard]] int64_t resolve_timestamp(int64_t hw_ns) const noexcept {
         if (!config_.enable_drift_compensation) return hw_ns;
+
+        // Prefer shared ClockService when available.
+        if (clock_service_ && clock_service_->is_calibrated()) {
+            return clock_service_->hw_to_host(hw_ns);
+        }
+
+        // Fallback: local model.
         if (config_.clock_domain == SlamTimeSyncConfig::ClockDomain::Host &&
             drift_model_.is_valid()) {
             return drift_model_.hw_to_host(hw_ns);
@@ -782,8 +805,12 @@ private:
             }
 
             // ── Drift warning ───────────────────────────────────────
-            if (config_.enable_drift_compensation && drift_model_.is_valid()) {
-                const double drift = std::abs(drift_model_.drift_ns_per_sec());
+            if (config_.enable_drift_compensation) {
+                const double drift = clock_service_
+                    ? std::abs(clock_service_->drift_ns_per_sec())
+                    : (drift_model_.is_valid()
+                        ? std::abs(drift_model_.drift_ns_per_sec())
+                        : 0.0);
                 if (drift > config_.drift_warn_threshold_ns_per_sec) {
                     if (drift_warn_cb_) drift_warn_cb_(drift);
                 }
@@ -857,7 +884,9 @@ private:
     std::deque<std::shared_ptr<const PointCloudFrame>> lidar_queue_;
 
     // Clock drift.  Accessed under imu_mu_ (same thread that feeds IMU).
+    // When clock_service_ is set, drift_model_ serves as fallback only.
     ClockDriftModel drift_model_;
+    const ClockService* clock_service_{nullptr};
 
     // Assembly state (single-consumer — ESIKF thread only).
     int64_t prev_scan_ts_{0};

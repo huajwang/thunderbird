@@ -20,12 +20,17 @@ comprehensive documentation.
 │  │ LiDAR    │  │ IMU      │  │ Camera   │   │   SyncEngine      │ │
 │  │ Driver   │  │ Driver   │  │ Driver   │──▶│ (nearest-neighbour│ │
 │  │ (thread) │  │ (thread) │  │ (thread) │   │  time alignment)  │ │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘   └─────────┬─────────┘ │
-│       │              │             │                    │           │
-│  ┌────▼──────────────▼─────────────▼───┐     ┌─────────▼─────────┐ │
-│  │       ITransport (abstract)         │     │   SyncBundle      │ │
-│  │  SimulatedTransport │ USB │ Ethernet│     │ (LiDAR+IMU+Cam)  │ │
-│  └─────────────────────────────────────┘     └───────────────────┘ │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘   └────────┬──────────┘ │
+│       │              │             │                   │            │
+│       │              │             │            ┌──────▼──────────┐ │
+│       └──────────────┴─────────────┴───────────▶│  ClockService  │ │
+│                                                 │ (unified drift │ │
+│  ┌─────────────────────────────────────┐        │  compensation) │ │
+│  │       ITransport (abstract)         │        └────────────────┘ │
+│  │  SimulatedTransport │ USB │ Ethernet│     ┌───────────────────┐ │
+│  └─────────────────────────────────────┘     │   SyncBundle      │ │
+│                                              │ (LiDAR+IMU+Cam)  │ │
+│                                              └───────────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -36,7 +41,7 @@ comprehensive documentation.
 | **`shared_ptr<const T>` for all frames** | Zero-copy fan-out to user callbacks + sync engine; immutable after creation |
 | **One thread per sensor driver** | Matches real hardware (independent I/O rates); avoids head-of-line blocking |
 | **Lock-free `RingBuffer`** | SPSC pattern for high-throughput paths; drops oldest on overflow |
-| **Nearest-neighbour sync** | Simple, deterministic, configurable tolerance — good enough for PoC |
+| **Nearest-neighbour sync** | Simple, deterministic, configurable tolerance — all three sync engines share a unified `ClockService` for drift-compensated timestamps |
 | **PImpl in `DeviceManager`** | Stable ABI; hides internal headers from consumers |
 
 ---

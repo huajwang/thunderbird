@@ -58,6 +58,7 @@
 
 #include "thunderbird/sensor_data.h"
 #include "thunderbird/sensor_queue.h"
+#include "thunderbird/clock_service.h"
 
 #include <algorithm>
 #include <atomic>
@@ -147,6 +148,13 @@ public:
         , output_q_(config.output_queue_depth) {}
 
     ~TimeSyncEngine() { stop(); }
+
+    // ── Clock service injection ────────────────────────────────────────────
+
+    /// Inject the shared ClockService for drift reporting.
+    /// Replaces the internal OLS drift estimator.  Lifetime: the
+    /// ClockService must outlive this TimeSyncEngine.
+    void set_clock_service(const ClockService* cs) { clock_service_ = cs; }
 
     // ── Feed (producer side) ────────────────────────────────────────────
 
@@ -313,7 +321,7 @@ private:
             ++stats_.imu_gaps;
         }
 
-        // ── Drift estimation ────────────────────────────────────────────
+        // ── Drift reporting ────────────────────────────────────────────
         if (sf.camera) {
             update_drift(sf.lidar_camera_offset_ns, ref_ts);
         }
@@ -358,11 +366,29 @@ private:
 
     // ── Drift tracking ──────────────────────────────────────────────────
     //
-    // We maintain a sliding window of (lidar_ts, offset) pairs and run a
-    // simple linear regression to estimate the drift rate (ns/s).  This
-    // handles gradual clock divergence between the host and device.
+    // When a ClockService is available, drift is read directly from it.
+    // Otherwise, a local sliding-window OLS is maintained as fallback.
 
     void update_drift(int64_t offset_ns, int64_t lidar_ts) {
+        // ── ClockService path (preferred) ───────────────────────────
+        if (clock_service_) {
+            drift_ns_per_sec_ = clock_service_->drift_ns_per_sec();
+
+            // Still track offsets for mean-offset stat.
+            offset_history_.push_back(static_cast<double>(offset_ns));
+            while (offset_history_.size() > config_.drift_window)
+                offset_history_.pop_front();
+
+            // Fire warning using ClockService drift value.
+            if (std::abs(drift_ns_per_sec_) >
+                static_cast<double>(config_.drift_warn_ns_per_sec))
+            {
+                if (drift_cb_) drift_cb_(drift_ns_per_sec_);
+            }
+            return;
+        }
+
+        // ── Fallback: local OLS (no ClockService) ───────────────────
         offset_history_.push_back(static_cast<double>(offset_ns));
         ts_history_.push_back(static_cast<double>(lidar_ts));
 
@@ -371,9 +397,8 @@ private:
             ts_history_.pop_front();
         }
 
-        if (offset_history_.size() < 3) return; // need a few points
+        if (offset_history_.size() < 3) return;
 
-        // Simple OLS: slope = Σ((t-t̄)(o-ō)) / Σ((t-t̄)²)
         const size_t n = offset_history_.size();
         double t_mean = 0, o_mean = 0;
         for (size_t i = 0; i < n; ++i) {
@@ -391,14 +416,11 @@ private:
             den += dt * dt;
         }
 
-        if (den < 1e-12) return; // degenerate — timestamps too close
+        if (den < 1e-12) return;
 
-        // slope is in (ns offset) / (ns time), i.e. dimensionless.
-        // Convert to ns-per-second by multiplying by 1e9.
         const double slope = num / den;
         drift_ns_per_sec_  = slope * 1.0e9;
 
-        // Fire warning if drift exceeds threshold.
         if (std::abs(drift_ns_per_sec_) >
             static_cast<double>(config_.drift_warn_ns_per_sec))
         {
@@ -419,10 +441,15 @@ private:
     /// older than this have already been assigned to a prior bundle.
     int64_t prev_lidar_ts_{std::numeric_limits<int64_t>::min()};
 
-    /// Drift estimation sliding windows.
+    /// Drift estimation sliding windows.  When a ClockService is
+    /// available, ts_history_ is unused — drift is read from the
+    /// service directly.
     std::deque<double> offset_history_;
-    std::deque<double> ts_history_;
+    std::deque<double> ts_history_;      ///< fallback only (no ClockService)
     double drift_ns_per_sec_{0};
+
+    /// Shared clock authority (optional; injected via set_clock_service).
+    const ClockService* clock_service_{nullptr};
 
     /// Output queue for pull API.
     SensorQueue<SyncedFrame> output_q_;
