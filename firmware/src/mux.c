@@ -86,8 +86,23 @@ int fw_mux_run(sensor_driver_t* sensors[], size_t n_sensors,
         }
 
         // ── Stream sensor data when in STREAMING state ──────────────────
-        if (ctrl.state != FW_STATE_STREAMING)
+        if (ctrl.state != FW_STATE_STREAMING) {
+            // Avoid busy-spinning while waiting for StartStream.
+            // Block on recv with a short timeout instead of spinning.
+            int n = fw_transport_recv(transport, ctrl_in,
+                                      sizeof(ctrl_in), 50);
+            if (n > 0) {
+                int resp = fw_control_process(&ctrl,
+                                              ctrl_in, (size_t)n,
+                                              ctrl_out, sizeof(ctrl_out));
+                if (resp > 0) {
+                    fw_transport_send(transport, ctrl_out, (size_t)resp);
+                }
+            } else if (n < 0) {
+                break;
+            }
             continue;
+        }
 
         for (size_t i = 0; i < n_sensors; ++i) {
             uint64_t ts = 0;

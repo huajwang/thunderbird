@@ -112,8 +112,8 @@ static void test_imu_rate_limited(void) {
     // First read
     g_stub_imu_driver.read(&g_stub_imu_driver, buf, sizeof(buf), &ts);
 
-    // Wait 6 ms (> 5 ms interval) and read again
-    sleep_ms(6);
+    // Wait 10 ms (> 5 ms interval) and read again
+    sleep_ms(10);
     int n = g_stub_imu_driver.read(&g_stub_imu_driver,
                                    buf, sizeof(buf), &ts);
     assert(n == 28);
@@ -145,11 +145,14 @@ static void test_camera_read(void) {
 
     // Validate sub-header
     uint32_t width, height, data_len;
+    uint8_t pixel_fmt;
     memcpy(&width,    buf + 0,  4);
     memcpy(&height,   buf + 4,  4);
+    pixel_fmt = buf[8];
     memcpy(&data_len, buf + 12, 4);
     assert(width  == 160);
     assert(height == 120);
+    assert(pixel_fmt == 1);  // RGB8 = 1
     assert(data_len == 160u * 120u * 3u);
 
     free(buf);

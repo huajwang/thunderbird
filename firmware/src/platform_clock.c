@@ -24,6 +24,19 @@ uint64_t fw_clock_now_ns(void) {
     return (uint64_t)((double)cnt.QuadPart * 1e9 / (double)s_freq);
 }
 
+#elif defined(FW_BARE_METAL)
+
+// Bare-metal stub — returns 0 until replaced with a HW timer read
+static volatile uint64_t s_tick_ns = 0;
+
+uint64_t fw_clock_now_ns(void) {
+    return s_tick_ns;
+}
+
+void fw_clock_set_ns(uint64_t ns) {
+    s_tick_ns = ns;
+}
+
 #else
 #include <time.h>
 

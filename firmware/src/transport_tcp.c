@@ -107,8 +107,19 @@ int fw_transport_accept(fw_transport_t* t) {
 
 int fw_transport_send(fw_transport_t* t, const uint8_t* data, size_t len) {
     if (!t || t->client_fd == INVALID_SOCK) return -1;
-    int sent = send(t->client_fd, (const char*)data, (int)len, 0);
-    return sent;
+    size_t total_sent = 0;
+    while (total_sent < len) {
+        int n = send(t->client_fd, (const char*)(data + total_sent),
+                     (int)(len - total_sent), 0);
+        if (n <= 0) {
+#ifndef _WIN32
+            if (errno == EINTR) continue;
+#endif
+            return -1;
+        }
+        total_sent += (size_t)n;
+    }
+    return (int)total_sent;
 }
 
 // ─── Receive ────────────────────────────────────────────────────────────────
@@ -125,14 +136,19 @@ int fw_transport_recv(fw_transport_t* t, uint8_t* buf, size_t max_len,
     struct timeval tv;
     tv.tv_sec  = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms % 1000) * 1000;
-    int ready = select(0, &fds, NULL, NULL, timeout_ms > 0 ? &tv : NULL);
-    if (ready <= 0) return 0;
+    int ready = select(0, &fds, NULL, NULL, &tv);
+    if (ready < 0) return -1;   // error
+    if (ready == 0) return 0;   // timeout / no data
 #else
     struct pollfd pfd;
     pfd.fd = t->client_fd;
     pfd.events = POLLIN;
     int ready = poll(&pfd, 1, (int)timeout_ms);
-    if (ready <= 0) return 0;
+    if (ready < 0) {
+        if (errno == EINTR) return 0;
+        return -1;   // error
+    }
+    if (ready == 0) return 0;   // timeout / no data
 #endif
 
     int n = recv(t->client_fd, (char*)buf, (int)max_len, 0);

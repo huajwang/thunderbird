@@ -58,7 +58,7 @@ static int stub_camera_read(sensor_driver_t* self,
 
     uint32_t w   = STUB_CAM_WIDTH;
     uint32_t h   = STUB_CAM_HEIGHT;
-    uint8_t  fmt = 0;  // RGB8
+    uint8_t  fmt = 1;  // RGB8 (PixelFormat::RGB8 = 1)
 
     memcpy(buf + 0,  &w,   4);
     memcpy(buf + 4,  &h,   4);

@@ -59,16 +59,18 @@ static int stub_lidar_read(sensor_driver_t* self,
 
     // Sub-header
     uint32_t np = STUB_LIDAR_NUM_POINTS;
-    float az_start = st->azimuth;
-    float az_end   = st->azimuth + 6.28f;  // full 360° sweep
-    memcpy(buf + 0, &np,       4);
-    memcpy(buf + 4, &az_start, 4);
-    memcpy(buf + 8, &az_end,   4);
+    float az_start_deg = st->azimuth;                  // degrees
+    float az_end_deg   = st->azimuth + 360.0f;          // full 360° sweep
+    memcpy(buf + 0, &np,           4);
+    memcpy(buf + 4, &az_start_deg, 4);
+    memcpy(buf + 8, &az_end_deg,   4);
 
     // Synthetic points: ring pattern at fixed radius
     uint8_t* pts = buf + sub_hdr_size;
+    float deg2rad = 3.14159265f / 180.0f;
     for (uint32_t i = 0; i < STUB_LIDAR_NUM_POINTS; ++i) {
-        float angle = az_start + (float)i * (6.28f / STUB_LIDAR_NUM_POINTS);
+        float angle_deg = az_start_deg + (float)i * (360.0f / STUB_LIDAR_NUM_POINTS);
+        float angle = angle_deg * deg2rad;
         float r = 5.0f;
         float x = r * cosf(angle);
         float y = r * sinf(angle);
@@ -83,8 +85,8 @@ static int stub_lidar_read(sensor_driver_t* self,
         pts[i * 16 + 13] = ring;
     }
 
-    st->azimuth += 6.28f;
-    if (st->azimuth > 628.0f) st->azimuth = 0.0f;
+    st->azimuth += 360.0f;
+    if (st->azimuth >= 36000.0f) st->azimuth = 0.0f;
 
     return (int)total;
 }

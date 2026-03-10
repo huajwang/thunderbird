@@ -24,7 +24,7 @@ extern sensor_driver_t g_stub_lidar_driver;
 extern sensor_driver_t g_stub_imu_driver;
 extern sensor_driver_t g_stub_camera_driver;
 
-int main(int argc, char* argv[]) {
+int main(int argc, const char* argv[]) {
     uint16_t port = 5555;
     if (argc > 1) {
         int p = atoi(argv[1]);

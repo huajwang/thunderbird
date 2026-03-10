@@ -205,7 +205,45 @@ static void test_unknown_type(void) {
 
     printf("  PASS: unknown_type\n");
 }
+// ─── Wrong protocol version ────────────────────────────────────────────────────
 
+static void test_wrong_version(void) {
+    fw_control_ctx_t ctx;
+    fw_device_identity_t id = test_identity();
+    fw_control_init(&ctx, &id);
+
+    uint8_t in_buf[64], out_buf[64];
+    size_t n = build_control_pkt(in_buf, sizeof(in_buf),
+                                 FW_PKT_HEARTBEAT, NULL, 0);
+    // Tamper with version field (byte 2) and recompute CRC
+    in_buf[2] = 99;
+    uint32_t crc = fw_crc32(in_buf, n - FW_PROTO_CRC_SIZE);
+    memcpy(in_buf + n - FW_PROTO_CRC_SIZE, &crc, 4);
+
+    int resp = fw_control_process(&ctx, in_buf, n, out_buf, sizeof(out_buf));
+    assert(resp == -1);
+
+    printf("  PASS: wrong_version\n");
+}
+
+// ─── Length mismatch ───────────────────────────────────────────────────────────
+
+static void test_length_mismatch(void) {
+    fw_control_ctx_t ctx;
+    fw_device_identity_t id = test_identity();
+    fw_control_init(&ctx, &id);
+
+    uint8_t in_buf[128], out_buf[64];
+    // Build a valid heartbeat packet
+    size_t n = build_control_pkt(in_buf, sizeof(in_buf),
+                                 FW_PKT_HEARTBEAT, NULL, 0);
+    // Pass wrong length (extra bytes) — header.payload_length won't match
+    int resp = fw_control_process(&ctx, in_buf, n + 5,
+                                  out_buf, sizeof(out_buf));
+    assert(resp == -1);
+
+    printf("  PASS: length_mismatch\n");
+}
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 int main(void) {
@@ -217,6 +255,8 @@ int main(void) {
     test_invalid_crc();
     test_short_packet();
     test_unknown_type();
+    test_wrong_version();
+    test_length_mismatch();
     printf("All control tests passed.\n");
     return 0;
 }

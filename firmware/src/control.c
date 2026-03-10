@@ -31,6 +31,17 @@ int fw_control_process(fw_control_ctx_t* ctx,
     if (hdr.magic != FW_PROTO_MAGIC)
         return -1;
 
+    if (hdr.version != FW_PROTO_VERSION)
+        return -1;
+
+    // Validate payload_length matches actual data received
+    size_t expected_len = FW_PROTO_HEADER_SIZE + hdr.payload_length + FW_PROTO_CRC_SIZE;
+    if (in_len != expected_len)
+        return -1;
+
+    if (hdr.payload_length > FW_PROTO_MAX_PAYLOAD)
+        return -1;
+
     switch (hdr.payload_type) {
 
     // ── Handshake ───────────────────────────────────────────────────────

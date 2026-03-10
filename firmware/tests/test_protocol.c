@@ -51,7 +51,7 @@ static void test_build_packet_minimal(void) {
 }
 
 static void test_build_packet_with_payload(void) {
-    uint8_t payload[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    const uint8_t payload[] = {0xDE, 0xAD, 0xBE, 0xEF};
     uint8_t buf[64];
     size_t n = fw_build_packet(buf, sizeof(buf),
                                FW_PKT_IMU_SAMPLE, 7,
@@ -73,7 +73,7 @@ static void test_build_packet_with_payload(void) {
 }
 
 static void test_build_packet_buffer_too_small(void) {
-    uint8_t payload[32];
+    const uint8_t payload[32] = {0};
     uint8_t buf[10];  // too small for header + payload + CRC
     size_t n = fw_build_packet(buf, sizeof(buf),
                                FW_PKT_LIDAR_SCAN, 0, 0,
@@ -97,7 +97,7 @@ static void test_crc32_validate_tampered(void) {
 }
 
 static void test_crc32_validate_short(void) {
-    uint8_t buf[2] = {0};
+    const uint8_t buf[2] = {0};
     assert(!fw_crc32_validate(buf, 2));
     printf("  PASS: crc32_validate_short\n");
 }

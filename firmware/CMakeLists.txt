@@ -40,6 +40,7 @@ endif()
 if(FW_CROSS_COMPILE)
     add_library(thunderbird_fw_core STATIC ${FW_CORE_SOURCES})
     target_include_directories(thunderbird_fw_core PUBLIC include)
+    target_compile_definitions(thunderbird_fw_core PRIVATE FW_BARE_METAL)
 endif()
 
 # ─── Tests (native builds only) ─────────────────────────────────────────────
