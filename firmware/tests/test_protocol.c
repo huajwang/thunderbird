@@ -35,15 +35,13 @@ static void test_build_packet_minimal(void) {
 
     assert(n == FW_PROTO_HEADER_SIZE + FW_PROTO_CRC_SIZE);  // 24 bytes
 
-    // Header fields
-    fw_packet_header_t hdr;
-    memcpy(&hdr, buf, sizeof(hdr));
-    assert(hdr.magic           == FW_PROTO_MAGIC);
-    assert(hdr.version         == FW_PROTO_VERSION);
-    assert(hdr.payload_type    == FW_PKT_HEARTBEAT);
-    assert(hdr.sequence        == 42u);
-    assert(hdr.hw_timestamp_ns == 1000000LL);
-    assert(hdr.payload_length  == 0u);
+    // Header fields — validate via little-endian loaders against raw buffer
+    assert(fw_load_le16(buf)      == FW_PROTO_MAGIC);
+    assert(buf[2]                 == FW_PROTO_VERSION);
+    assert(buf[3]                 == FW_PKT_HEARTBEAT);
+    assert(fw_load_le32(buf + 4)  == 42u);
+    assert(fw_load_le64(buf + 8)  == 1000000LL);
+    assert(fw_load_le32(buf + 16) == 0u);
 
     // CRC must validate
     assert(fw_crc32_validate(buf, n));
@@ -59,10 +57,9 @@ static void test_build_packet_with_payload(void) {
 
     assert(n == FW_PROTO_HEADER_SIZE + 4 + FW_PROTO_CRC_SIZE);
 
-    fw_packet_header_t hdr;
-    memcpy(&hdr, buf, sizeof(hdr));
-    assert(hdr.payload_type   == FW_PKT_IMU_SAMPLE);
-    assert(hdr.payload_length == 4u);
+    // Validate header fields via little-endian loaders
+    assert(buf[3]                 == FW_PKT_IMU_SAMPLE);
+    assert(fw_load_le32(buf + 16) == 4u);
 
     // Payload bytes intact
     assert(memcmp(buf + FW_PROTO_HEADER_SIZE, payload, 4) == 0);

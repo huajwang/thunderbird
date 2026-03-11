@@ -103,6 +103,10 @@ cd build && ctest --output-on-failure
 ./build/examples/recorder_demo
 ./build/examples/sync_layer_demo
 ./build/examples/third_party_lidar_demo
+
+# Firmware demos (require building/running the stub firmware)
+./build/examples/firmware_loopback_demo
+./build/examples/device_firmware_demo
 ```
 
 ### Build with Python bindings

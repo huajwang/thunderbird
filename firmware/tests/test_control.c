@@ -305,7 +305,7 @@ static void test_length_mismatch(void) {
     memset(in_buf + n, 0xAB, extended_len - n);
     // Recompute CRC for the extended length so CRC check passes
     uint32_t crc = fw_crc32(in_buf, extended_len - FW_PROTO_CRC_SIZE);
-    memcpy(in_buf + extended_len - FW_PROTO_CRC_SIZE, &crc, sizeof(crc));
+    fw_store_le32(in_buf + extended_len - FW_PROTO_CRC_SIZE, crc);
 
     int resp = fw_control_process(&ctx, in_buf, extended_len,
                                   out_buf, sizeof(out_buf));

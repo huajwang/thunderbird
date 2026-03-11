@@ -105,12 +105,24 @@ int main(int argc, const char* argv[]) {
                 info.firmware_version.c_str());
 
     // ── 7. Stream for a few seconds ─────────────────────────────────────
-    mgr->start_streaming();
+    s = mgr->start_streaming();
+    std::printf("start_streaming() → %s\n", status_string(s));
+    if (s != Status::OK) {
+        std::fprintf(stderr, "Failed to start streaming.\n");
+        mgr->disconnect();
+        return 1;
+    }
     std::printf("Streaming for 5 seconds ...\n\n");
     std::this_thread::sleep_for(std::chrono::seconds(5));
 
     // ── 8. Stop and print stats ─────────────────────────────────────────
-    mgr->stop_streaming();
+    s = mgr->stop_streaming();
+    std::printf("stop_streaming() → %s\n", status_string(s));
+    if (s != Status::OK) {
+        std::fprintf(stderr, "Failed to stop streaming.\n");
+        mgr->disconnect();
+        return 1;
+    }
 
     auto stats = mgr->decoder_stats();
     std::printf("\n── Results ─────────────────────────────\n");

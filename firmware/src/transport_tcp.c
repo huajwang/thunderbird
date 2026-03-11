@@ -131,7 +131,12 @@ int fw_transport_accept(fw_transport_t* t) {
 
 #ifndef FW_TCP_ONLY
     // Remember the client's IP; set UDP data port to port+1
-    if (t->port >= 65535) return -1;  // reject: UDP port would wrap to 0
+    if (t->port >= 65535) {
+        // reject: UDP port would wrap to 0; clean up accepted socket
+        CLOSE_SOCKET(t->client_fd);
+        t->client_fd = INVALID_SOCK;
+        return -1;
+    }
     memset(&t->client_addr, 0, sizeof(t->client_addr));
     t->client_addr.sin_family = AF_INET;
     t->client_addr.sin_addr   = peer.sin_addr;
