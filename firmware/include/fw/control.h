@@ -8,7 +8,6 @@
 #pragma once
 
 #include "fw/protocol.h"
-#include "fw/transport.h"
 
 #include <stdint.h>
 

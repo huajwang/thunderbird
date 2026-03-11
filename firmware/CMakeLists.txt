@@ -5,6 +5,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 option(FW_CROSS_COMPILE "Cross-compiling for bare-metal (skip TCP transport and tests)" OFF)
+option(FW_TCP_ONLY "Route all traffic over TCP instead of TCP+UDP dual-channel" OFF)
 
 # ─── Core library (platform-independent) ─────────────────────────────────────
 
@@ -27,6 +28,10 @@ if(NOT FW_CROSS_COMPILE)
         src/mux.c
     )
     target_include_directories(thunderbird_firmware PRIVATE include)
+
+    if(FW_TCP_ONLY)
+        target_compile_definitions(thunderbird_firmware PRIVATE FW_TCP_ONLY)
+    endif()
 
     if(WIN32)
         target_link_libraries(thunderbird_firmware PRIVATE ws2_32)
@@ -51,6 +56,7 @@ if(NOT FW_CROSS_COMPILE)
     # Protocol & CRC tests
     add_executable(test_protocol tests/test_protocol.c ${FW_CORE_SOURCES})
     target_include_directories(test_protocol PRIVATE include)
+    target_compile_options(test_protocol PRIVATE -UNDEBUG)
     if(WIN32)
         target_link_libraries(test_protocol PRIVATE ws2_32)
     else()
@@ -61,6 +67,7 @@ if(NOT FW_CROSS_COMPILE)
     # Control handler tests
     add_executable(test_control tests/test_control.c ${FW_CORE_SOURCES})
     target_include_directories(test_control PRIVATE include)
+    target_compile_options(test_control PRIVATE -UNDEBUG)
     if(WIN32)
         target_link_libraries(test_control PRIVATE ws2_32)
     else()
@@ -71,6 +78,7 @@ if(NOT FW_CROSS_COMPILE)
     # Stub sensor driver tests
     add_executable(test_sensors tests/test_sensors.c ${FW_CORE_SOURCES})
     target_include_directories(test_sensors PRIVATE include)
+    target_compile_options(test_sensors PRIVATE -UNDEBUG)
     if(WIN32)
         target_link_libraries(test_sensors PRIVATE ws2_32)
     else()

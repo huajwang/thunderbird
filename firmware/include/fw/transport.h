@@ -26,9 +26,14 @@ fw_transport_t* fw_transport_create_tcp(uint16_t port);
 /// error occurs.  Returns 0 on success, negative on error.
 int fw_transport_accept(fw_transport_t* t);
 
-/// Send `len` bytes to the connected host.
+/// Send `len` bytes to the connected host over the control channel (TCP).
 /// Returns bytes sent, or negative on error.
 int fw_transport_send(fw_transport_t* t, const uint8_t* data, size_t len);
+
+/// Send `len` bytes to the connected host over the data channel (UDP).
+/// Falls back to the control channel (TCP) when compiled with FW_TCP_ONLY.
+/// Returns bytes sent, or negative on error.
+int fw_transport_send_data(fw_transport_t* t, const uint8_t* data, size_t len);
 
 /// Receive up to `max_len` bytes from the host.
 /// @param timeout_ms  0 = non-blocking, >0 = block up to this many ms.

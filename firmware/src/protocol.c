@@ -45,6 +45,7 @@ size_t fw_build_packet(uint8_t* out, size_t out_capacity,
                        uint8_t pkt_type, uint32_t seq,
                        int64_t hw_timestamp_ns,
                        const uint8_t* payload, uint32_t payload_len) {
+    if (payload_len > 0 && payload == NULL) return 0;
     size_t total = FW_PROTO_HEADER_SIZE + payload_len + FW_PROTO_CRC_SIZE;
     if (total > out_capacity) return 0;
 

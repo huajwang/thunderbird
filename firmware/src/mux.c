@@ -14,6 +14,17 @@
 
 #include <string.h>
 
+#ifdef _WIN32
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <windows.h>
+  #define mux_sleep_ms(ms)  Sleep(ms)
+#else
+  #include <unistd.h>
+  #define mux_sleep_ms(ms)  usleep((ms) * 1000u)
+#endif
+
 // Map sensor_type_t → PacketType byte
 static uint8_t sensor_pkt_type(sensor_type_t t) {
     switch (t) {
@@ -43,7 +54,7 @@ int fw_mux_run(sensor_driver_t* sensors[], size_t n_sensors,
     uint32_t seq[SENSOR_COUNT];
     memset(seq, 0, sizeof(seq));
 
-    // ── Scratch buffers (stack — adjust for constrained MCUs) ───────────
+    // ── Scratch buffers (static to avoid large stack usage on MCUs) ─────
     static uint8_t sensor_buf[MUX_SENSOR_BUF_SIZE];
     static uint8_t pkt_buf[MUX_PKT_BUF_SIZE];
     static uint8_t ctrl_in[MUX_CTRL_BUF_SIZE];
@@ -104,6 +115,7 @@ int fw_mux_run(sensor_driver_t* sensors[], size_t n_sensors,
             continue;
         }
 
+        int any_data = 0;
         for (size_t i = 0; i < n_sensors; ++i) {
             uint64_t ts = 0;
             int payload_len = sensors[i]->read(sensors[i],
@@ -112,6 +124,7 @@ int fw_mux_run(sensor_driver_t* sensors[], size_t n_sensors,
                                                &ts);
             if (payload_len <= 0) continue;
 
+            any_data = 1;
             uint8_t ptype = sensor_pkt_type(sensors[i]->type);
             size_t pkt_len = fw_build_packet(pkt_buf, sizeof(pkt_buf),
                                              ptype,
@@ -121,9 +134,14 @@ int fw_mux_run(sensor_driver_t* sensors[], size_t n_sensors,
                                              (uint32_t)payload_len);
             if (pkt_len == 0) continue;
 
-            int sent = fw_transport_send(transport, pkt_buf, pkt_len);
+            // Sensor data goes over the data channel (UDP when available)
+            int sent = fw_transport_send_data(transport, pkt_buf, pkt_len);
             if (sent < 0) goto done;  // host disconnected
         }
+
+        // Avoid busy-spinning when no sensor produced data this iteration
+        if (!any_data)
+            mux_sleep_ms(1);
     }
 
 done:

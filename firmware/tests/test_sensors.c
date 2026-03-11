@@ -112,8 +112,8 @@ static void test_imu_rate_limited(void) {
     // First read
     g_stub_imu_driver.read(&g_stub_imu_driver, buf, sizeof(buf), &ts);
 
-    // Wait 10 ms (> 5 ms interval) and read again
-    sleep_ms(10);
+    // Wait 20 ms (>> 5 ms interval) and read again
+    sleep_ms(20);
     int n = g_stub_imu_driver.read(&g_stub_imu_driver,
                                    buf, sizeof(buf), &ts);
     assert(n == 28);

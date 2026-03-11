@@ -20,8 +20,12 @@ uint64_t fw_clock_now_ns(void) {
     }
     LARGE_INTEGER cnt;
     QueryPerformanceCounter(&cnt);
-    // Convert to nanoseconds: cnt * 1e9 / freq
-    return (uint64_t)((double)cnt.QuadPart * 1e9 / (double)s_freq);
+    // Convert to nanoseconds using integer arithmetic to avoid precision loss:
+    // ns = (ticks / freq) * 1e9 + (ticks % freq) * 1e9 / freq
+    const uint64_t ticks   = (uint64_t)cnt.QuadPart;
+    const uint64_t seconds = ticks / s_freq;
+    const uint64_t rem     = ticks % s_freq;
+    return seconds * 1000000000ULL + (rem * 1000000000ULL) / s_freq;
 }
 
 #elif defined(FW_BARE_METAL)

@@ -17,8 +17,11 @@
   #endif
   #include <winsock2.h>
   #include <ws2tcpip.h>
-  #pragma comment(lib, "ws2_32.lib")
+  #ifdef _MSC_VER
+    #pragma comment(lib, "ws2_32.lib")
+  #endif
   typedef SOCKET socket_t;
+  typedef int    socklen_t;
   #define INVALID_SOCK INVALID_SOCKET
   #define CLOSE_SOCKET closesocket
 #else
@@ -38,32 +41,43 @@ struct fw_transport {
     socket_t listen_fd;
     socket_t client_fd;
     uint16_t port;
+#ifndef FW_TCP_ONLY
+    socket_t udp_fd;
+    struct sockaddr_in client_addr;  // captured on accept() for UDP sendto
+    int      has_client_addr;
+#endif
 };
 
 // ─── Winsock init helper ────────────────────────────────────────────────────
 
 #ifdef _WIN32
 static int s_wsa_init = 0;
-static void ensure_wsa(void) {
+static int ensure_wsa(void) {
     if (!s_wsa_init) {
         WSADATA wsa;
-        WSAStartup(MAKEWORD(2, 2), &wsa);
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+            return -1;
         s_wsa_init = 1;
     }
+    return 0;
 }
 #else
-static void ensure_wsa(void) {}
+static int ensure_wsa(void) { return 0; }
 #endif
 
 // ─── Create ─────────────────────────────────────────────────────────────────
 
 fw_transport_t* fw_transport_create_tcp(uint16_t port) {
-    ensure_wsa();
+    if (ensure_wsa() != 0) return NULL;
 
     fw_transport_t* t = (fw_transport_t*)calloc(1, sizeof(*t));
     if (!t) return NULL;
     t->client_fd = INVALID_SOCK;
     t->port      = port;
+#ifndef FW_TCP_ONLY
+    t->udp_fd    = INVALID_SOCK;
+    t->has_client_addr = 0;
+#endif
 
     t->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (t->listen_fd == INVALID_SOCK) { free(t); return NULL; }
@@ -90,6 +104,17 @@ fw_transport_t* fw_transport_create_tcp(uint16_t port) {
         return NULL;
     }
 
+#ifndef FW_TCP_ONLY
+    // Create UDP socket for the data channel (send-only, no bind needed).
+    // The SDK client binds its UDP recv socket to port+1.
+    t->udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (t->udp_fd == INVALID_SOCK) {
+        CLOSE_SOCKET(t->listen_fd);
+        free(t);
+        return NULL;
+    }
+#endif
+
     return t;
 }
 
@@ -99,8 +124,21 @@ int fw_transport_accept(fw_transport_t* t) {
     if (!t) return -1;
     if (t->client_fd != INVALID_SOCK) return 0;  // already connected
 
-    t->client_fd = accept(t->listen_fd, NULL, NULL);
-    return (t->client_fd == INVALID_SOCK) ? -1 : 0;
+    struct sockaddr_in peer;
+    socklen_t peer_len = sizeof(peer);
+    t->client_fd = accept(t->listen_fd, (struct sockaddr*)&peer, &peer_len);
+    if (t->client_fd == INVALID_SOCK) return -1;
+
+#ifndef FW_TCP_ONLY
+    // Remember the client's IP; set UDP data port to port+1
+    memset(&t->client_addr, 0, sizeof(t->client_addr));
+    t->client_addr.sin_family = AF_INET;
+    t->client_addr.sin_addr   = peer.sin_addr;
+    t->client_addr.sin_port   = htons((uint16_t)(t->port + 1));
+    t->has_client_addr        = 1;
+#endif
+
+    return 0;
 }
 
 // ─── Send ───────────────────────────────────────────────────────────────────
@@ -120,6 +158,20 @@ int fw_transport_send(fw_transport_t* t, const uint8_t* data, size_t len) {
         total_sent += (size_t)n;
     }
     return (int)total_sent;
+}
+
+// ─── Send (data channel — UDP) ──────────────────────────────────────────────
+
+int fw_transport_send_data(fw_transport_t* t, const uint8_t* data, size_t len) {
+#ifndef FW_TCP_ONLY
+    if (!t || t->udp_fd == INVALID_SOCK || !t->has_client_addr) return -1;
+    int n = sendto(t->udp_fd, (const char*)data, (int)len, 0,
+                   (const struct sockaddr*)&t->client_addr,
+                   sizeof(t->client_addr));
+    return (n < 0) ? -1 : n;
+#else
+    return fw_transport_send(t, data, len);
+#endif
 }
 
 // ─── Receive ────────────────────────────────────────────────────────────────
@@ -166,6 +218,9 @@ void fw_transport_close_client(fw_transport_t* t) {
     if (t && t->client_fd != INVALID_SOCK) {
         CLOSE_SOCKET(t->client_fd);
         t->client_fd = INVALID_SOCK;
+#ifndef FW_TCP_ONLY
+        t->has_client_addr = 0;
+#endif
     }
 }
 
@@ -173,5 +228,8 @@ void fw_transport_destroy(fw_transport_t* t) {
     if (!t) return;
     fw_transport_close_client(t);
     if (t->listen_fd != INVALID_SOCK) CLOSE_SOCKET(t->listen_fd);
+#ifndef FW_TCP_ONLY
+    if (t->udp_fd != INVALID_SOCK) CLOSE_SOCKET(t->udp_fd);
+#endif
     free(t);
 }
