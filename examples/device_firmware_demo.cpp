@@ -95,7 +95,7 @@ int main(int argc, const char* argv[]) {
     // ── Stream ──────────────────────────────────────────────────────────
     s = device.start();
     std::printf("start() → %s\n", status_string(s));
-    if (s != Status::OK && s != Status::AlreadyStreaming) {
+    if (s != Status::OK) {
         std::fprintf(stderr, "Failed to start streaming.\n");
         device.disconnect();
         return 1;

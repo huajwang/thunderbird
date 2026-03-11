@@ -111,9 +111,10 @@ public:
     Status initialize() override { return Status::OK; }
 
     /// Start is handled at the HardwareDriver level — only the first facade
-    /// to call actually triggers the device.
+    /// to call actually triggers the device; subsequent facades see OK.
     Status start_streaming() override {
-        return hw_->start_streaming();
+        Status s = hw_->start_streaming();
+        return (s == Status::AlreadyStreaming) ? Status::OK : s;
     }
 
     Status stop_streaming() override {
