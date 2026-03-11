@@ -106,7 +106,7 @@ std::thread worker([&] {
 ### Using the Pull API
 
 The SDK also provides a built-in pull (polling) API via the
-`DataAbstractionLayer`, which internally uses the same queue pattern.
+`thunderbird::data::DataLayer`, which internally uses the same queue pattern.
 This is useful when your application loop drives the cadence:
 
 ```cpp

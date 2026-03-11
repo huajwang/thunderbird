@@ -59,6 +59,7 @@ int fw_control_process(fw_control_ctx_t* ctx,
 
         int accepted = (hs.protocol_version == FW_PROTO_VERSION) ? 1 : 0;
 
+        fw_conn_state_t prev_state = ctx->state;
         if (accepted) {
             // Accept handshake and transition to connected state.
             ctx->state = FW_STATE_CONNECTED;
@@ -79,6 +80,14 @@ int fw_control_process(fw_control_ctx_t* ctx,
                                    FW_PKT_HANDSHAKE_ACK, 0,
                                    (int64_t)fw_clock_now_ns(),
                                    (const uint8_t*)&ack, sizeof(ack));
+        if (n == 0) {
+            // Packet construction failed (e.g., out_capacity too small).
+            // Roll back state transition — we cannot send the required ACK.
+            if (accepted) {
+                ctx->state = prev_state;
+            }
+            return -1;
+        }
         return (int)n;
     }
 
@@ -110,6 +119,10 @@ int fw_control_process(fw_control_ctx_t* ctx,
                                    FW_PKT_HEARTBEAT, 0,
                                    reply.sender_timestamp_ns,
                                    (const uint8_t*)&reply, sizeof(reply));
+        if (n == 0) {
+            // Packet construction failed (e.g., out_capacity too small).
+            return -1;
+        }
         return (int)n;
     }
 

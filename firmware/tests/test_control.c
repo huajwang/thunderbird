@@ -313,6 +313,58 @@ static void test_length_mismatch(void) {
 
     printf("  PASS: length_mismatch\n");
 }
+
+// ─── Handshake with too-small output buffer ────────────────────────────────
+
+static void test_handshake_out_capacity_too_small(void) {
+    fw_control_ctx_t ctx;
+    fw_device_identity_t id = test_identity();
+    fw_control_init(&ctx, &id);
+
+    fw_handshake_payload_t hs;
+    memset(&hs, 0, sizeof(hs));
+    hs.protocol_version = FW_PROTO_VERSION;
+    strncpy(hs.client_id, "test-client", sizeof(hs.client_id) - 1);
+
+    uint8_t in_buf[256];
+    uint8_t out_buf[4];  // way too small for a HandshakeAck packet
+    size_t in_len = build_control_pkt(in_buf, sizeof(in_buf),
+                                      FW_PKT_HANDSHAKE,
+                                      (const uint8_t*)&hs, sizeof(hs));
+
+    int resp = fw_control_process(&ctx, in_buf, in_len,
+                                  out_buf, sizeof(out_buf));
+
+    // Must return error, not 0 ("no response")
+    assert(resp == -1);
+    // State must NOT have transitioned since ACK couldn't be sent
+    assert(ctx.state == FW_STATE_IDLE);
+
+    printf("  PASS: handshake_out_capacity_too_small\n");
+}
+
+// ─── Heartbeat with too-small output buffer ────────────────────────────────
+
+static void test_heartbeat_out_capacity_too_small(void) {
+    fw_control_ctx_t ctx;
+    fw_device_identity_t id = test_identity();
+    fw_control_init(&ctx, &id);
+    ctx.state = FW_STATE_CONNECTED;
+
+    uint8_t in_buf[64];
+    uint8_t out_buf[4];  // too small for a heartbeat reply
+    size_t n = build_control_pkt(in_buf, sizeof(in_buf),
+                                 FW_PKT_HEARTBEAT, NULL, 0);
+
+    int resp = fw_control_process(&ctx, in_buf, n,
+                                  out_buf, sizeof(out_buf));
+
+    // Must return error, not 0
+    assert(resp == -1);
+
+    printf("  PASS: heartbeat_out_capacity_too_small\n");
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 int main(void) {
@@ -320,9 +372,11 @@ int main(void) {
     test_handshake();
     test_handshake_wrong_version();
     test_handshake_malformed();
+    test_handshake_out_capacity_too_small();
     test_start_stop_stream();
     test_start_from_idle();
     test_heartbeat();
+    test_heartbeat_out_capacity_too_small();
     test_invalid_crc();
     test_short_packet();
     test_unknown_type();
