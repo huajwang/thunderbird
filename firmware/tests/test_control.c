@@ -72,6 +72,63 @@ static void test_handshake(void) {
     printf("  PASS: handshake\n");
 }
 
+// ─── Handshake with wrong protocol version (should be rejected) ─────────────
+
+static void test_handshake_wrong_version(void) {
+    fw_control_ctx_t ctx;
+    fw_device_identity_t id = test_identity();
+    fw_control_init(&ctx, &id);
+
+    fw_handshake_payload_t hs;
+    memset(&hs, 0, sizeof(hs));
+    hs.protocol_version = FW_PROTO_VERSION + 1;  // wrong version
+    strncpy(hs.client_id, "bad-client", sizeof(hs.client_id) - 1);
+
+    uint8_t in_buf[256], out_buf[256];
+    size_t in_len = build_control_pkt(in_buf, sizeof(in_buf),
+                                      FW_PKT_HANDSHAKE,
+                                      (const uint8_t*)&hs, sizeof(hs));
+    assert(in_len > 0);
+
+    int resp = fw_control_process(&ctx, in_buf, in_len,
+                                  out_buf, sizeof(out_buf));
+
+    // Should produce a HandshakeAck with accepted=0
+    assert(resp > 0);
+    assert(ctx.state == FW_STATE_IDLE);  // must NOT transition
+
+    fw_handshake_ack_payload_t ack;
+    memcpy(&ack, out_buf + FW_PROTO_HEADER_SIZE, sizeof(ack));
+    assert(ack.accepted == 0);
+
+    printf("  PASS: handshake_wrong_version\n");
+}
+
+// ─── Handshake with truncated payload (should be rejected) ──────────────────
+
+static void test_handshake_malformed(void) {
+    fw_control_ctx_t ctx;
+    fw_device_identity_t id = test_identity();
+    fw_control_init(&ctx, &id);
+
+    // Send a handshake with a payload that is too short
+    uint8_t short_payload[4] = {FW_PROTO_VERSION, 0, 0, 0};
+    uint8_t in_buf[256], out_buf[256];
+    size_t in_len = build_control_pkt(in_buf, sizeof(in_buf),
+                                      FW_PKT_HANDSHAKE,
+                                      short_payload, sizeof(short_payload));
+    assert(in_len > 0);
+
+    int resp = fw_control_process(&ctx, in_buf, in_len,
+                                  out_buf, sizeof(out_buf));
+
+    // Should reject: payload too small for fw_handshake_payload_t
+    assert(resp == -1);
+    assert(ctx.state == FW_STATE_IDLE);
+
+    printf("  PASS: handshake_malformed\n");
+}
+
 // ─── Start / Stop stream ───────────────────────────────────────────────────
 
 static void test_start_stop_stream(void) {
@@ -261,6 +318,8 @@ static void test_length_mismatch(void) {
 int main(void) {
     printf("=== Control handler tests ===\n");
     test_handshake();
+    test_handshake_wrong_version();
+    test_handshake_malformed();
     test_start_stop_stream();
     test_start_from_idle();
     test_heartbeat();

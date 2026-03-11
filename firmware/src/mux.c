@@ -72,8 +72,9 @@ int fw_mux_run(sensor_driver_t* sensors[], size_t n_sensors,
 
     // ── Main loop ───────────────────────────────────────────────────────
     uint64_t last_ctrl_poll_ns = 0;
+    fw_mux_config_t default_config = fw_mux_default_config();
     const fw_mux_config_t* effective_config =
-        (config != NULL) ? config : &(fw_mux_config_t){fw_mux_default_config()};
+        (config != NULL) ? config : &default_config;
     uint64_t ctrl_poll_interval_ns =
         (uint64_t)effective_config->control_poll_interval_ms * 1000000ULL;
 
