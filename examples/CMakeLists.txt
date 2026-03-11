@@ -33,3 +33,15 @@ target_link_libraries(health_monitor_demo PRIVATE thunderbird_sdk)
 
 add_executable(third_party_lidar_demo third_party_lidar_demo.cpp)
 target_link_libraries(third_party_lidar_demo PRIVATE thunderbird_sdk)
+
+add_executable(firmware_loopback_demo firmware_loopback_demo.cpp)
+target_link_libraries(firmware_loopback_demo PRIVATE thunderbird_sdk)
+if(WIN32)
+    target_link_libraries(firmware_loopback_demo PRIVATE ws2_32)
+endif()
+
+add_executable(device_firmware_demo device_firmware_demo.cpp)
+target_link_libraries(device_firmware_demo PRIVATE thunderbird_sdk)
+if(WIN32)
+    target_link_libraries(device_firmware_demo PRIVATE ws2_32)
+endif()

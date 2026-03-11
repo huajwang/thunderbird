@@ -99,6 +99,19 @@ cd build && ctest --output-on-failure
 ./build/examples/basic_streaming
 ./build/examples/sync_demo
 ./build/examples/raw_sensors
+./build/examples/callback_api_demo
+./build/examples/clock_service_demo
+./build/examples/comm_layer_demo
+./build/examples/frame_assembler_demo
+./build/examples/health_monitor_demo
+./build/examples/pull_api_demo
+./build/examples/recorder_demo
+./build/examples/sync_layer_demo
+./build/examples/third_party_lidar_demo
+
+# Firmware demos (require building/running the stub firmware)
+./build/examples/firmware_loopback_demo
+./build/examples/device_firmware_demo
 ```
 
 ### Build with Python bindings

@@ -1,0 +1,185 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Thunderbird Firmware — Continuous Integration
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Runs on every push/PR that touches firmware/ (or this workflow itself).
+# Builds the firmware and runs unit tests on Linux x64, Linux arm64,
+# and cross-compiles for ARM Cortex-M (bare-metal) to verify portability.
+#
+# Job dependency graph:
+#
+#   push/PR
+#     ├── build-and-test (linux-x64 Debug + Release, linux-arm64 Release)
+#     └── cross-compile  (arm-none-eabi, build-only — no execution)
+#
+# ─────────────────────────────────────────────────────────────────────────────
+name: Firmware CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware-ci.yml"
+    tags-ignore:
+      - "v*"
+  pull_request:
+    branches: [main]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware-ci.yml"
+
+concurrency:
+  group: firmware-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Build & test on hosted Linux runners
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  build-and-test:
+    name: "${{ matrix.os }} / ${{ matrix.build_type }}"
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux-x64
+            runner: ubuntu-24.04
+            build_type: Release
+          - os: linux-x64-debug
+            runner: ubuntu-24.04
+            build_type: Debug
+          - os: linux-arm64
+            runner: ubuntu-24.04-arm
+            build_type: Release
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 50M
+      CCACHE_COMPRESS: "true"
+      CCACHE_COMPRESSLEVEL: "6"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── apt cache ──────────────────────────────────────────────────
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-cache
+          key: apt-fw-${{ matrix.runner }}-v1
+
+      - name: Install dependencies
+        run: |
+          if [ -d ~/apt-cache ]; then
+            sudo cp -rn ~/apt-cache/. /var/cache/apt/archives/ 2>/dev/null || true
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ccache
+          mkdir -p ~/apt-cache
+          cp -rn /var/cache/apt/archives/*.deb ~/apt-cache/ 2>/dev/null || true
+
+      # ── ccache ─────────────────────────────────────────────────────
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-fw-${{ matrix.os }}-${{ matrix.build_type }}-${{ hashFiles('firmware/**') }}
+          restore-keys: |
+            ccache-fw-${{ matrix.os }}-${{ matrix.build_type }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --zero-stats
+          ccache --max-size="${CCACHE_MAXSIZE}"
+
+      # ── Build ──────────────────────────────────────────────────────
+      - name: Configure
+        run: |
+          cmake -S firmware -B firmware/build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build firmware/build -j "$(nproc)"
+
+      # ── Test ───────────────────────────────────────────────────────
+      - name: Test
+        run: cd firmware/build && ctest --output-on-failure -j "$(nproc)"
+
+      # ── Stats ──────────────────────────────────────────────────────
+      - name: ccache statistics
+        if: always()
+        run: |
+          echo "### ccache (firmware / ${{ matrix.os }} / ${{ matrix.build_type }})" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ccache --show-stats >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Cross-compile for ARM Cortex-M (build-only, ensures portability)
+  # ─────────────────────────────────────────────────────────────────────────
+  cross-compile:
+    name: "cross / arm-none-eabi"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-cache
+          key: apt-fw-cross-v1
+
+      - name: Install ARM toolchain
+        run: |
+          if [ -d ~/apt-cache ]; then
+            sudo cp -rn ~/apt-cache/. /var/cache/apt/archives/ 2>/dev/null || true
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake gcc-arm-none-eabi libnewlib-arm-none-eabi
+          mkdir -p ~/apt-cache
+          cp -rn /var/cache/apt/archives/*.deb ~/apt-cache/ 2>/dev/null || true
+
+      - name: Configure (cross)
+        run: |
+          cmake -S firmware -B firmware/build-arm \
+            -DCMAKE_SYSTEM_NAME=Generic \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=arm-none-eabi-gcc \
+            -DCMAKE_C_FLAGS="--specs=nosys.specs -mcpu=cortex-m4 -mthumb" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFW_CROSS_COMPILE=ON
+
+      - name: Build (cross)
+        run: cmake --build firmware/build-arm -j "$(nproc)"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Static analysis with cppcheck
+  # ─────────────────────────────────────────────────────────────────────────
+  static-analysis:
+    name: "cppcheck"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck \
+            --enable=warning,performance \
+            --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            --inline-suppr \
+            -I firmware/include \
+            firmware/src/ firmware/tests/
