@@ -48,12 +48,25 @@ int fw_control_process(fw_control_ctx_t* ctx,
 
     // ── Handshake ───────────────────────────────────────────────────────
     case FW_PKT_HANDSHAKE: {
-        // Accept any valid handshake regardless of current state.
-        ctx->state = FW_STATE_CONNECTED;
+        // Validate handshake payload structure and protocol version.
+        if (payload_length < sizeof(fw_handshake_payload_t)) {
+            // Malformed handshake payload.
+            return -1;
+        }
+
+        fw_handshake_payload_t hs;
+        memcpy(&hs, in_buf + FW_PROTO_HEADER_SIZE, sizeof(hs));
+
+        int accepted = (hs.protocol_version == FW_PROTO_VERSION) ? 1 : 0;
+
+        if (accepted) {
+            // Accept handshake and transition to connected state.
+            ctx->state = FW_STATE_CONNECTED;
+        }
 
         fw_handshake_ack_payload_t ack;
         memset(&ack, 0, sizeof(ack));
-        ack.accepted = 1;
+        ack.accepted = accepted;
         ack.device_protocol_version = FW_PROTO_VERSION;
         strncpy(ack.serial_number,    ctx->identity.serial_number,
                 sizeof(ack.serial_number) - 1);

@@ -218,7 +218,12 @@ static void test_wrong_version(void) {
     // Tamper with version field (byte 2) and recompute CRC
     in_buf[2] = 99;
     uint32_t crc = fw_crc32(in_buf, n - FW_PROTO_CRC_SIZE);
-    memcpy(in_buf + n - FW_PROTO_CRC_SIZE, &crc, 4);
+    // Store CRC in little-endian to match wire format and remain portable
+    size_t crc_offset = n - FW_PROTO_CRC_SIZE;
+    in_buf[crc_offset + 0] = (uint8_t)(crc & 0xFF);
+    in_buf[crc_offset + 1] = (uint8_t)((crc >> 8) & 0xFF);
+    in_buf[crc_offset + 2] = (uint8_t)((crc >> 16) & 0xFF);
+    in_buf[crc_offset + 3] = (uint8_t)((crc >> 24) & 0xFF);
 
     int resp = fw_control_process(&ctx, in_buf, n, out_buf, sizeof(out_buf));
     assert(resp == -1);
@@ -237,8 +242,15 @@ static void test_length_mismatch(void) {
     // Build a valid heartbeat packet
     size_t n = build_control_pkt(in_buf, sizeof(in_buf),
                                  FW_PKT_HEARTBEAT, NULL, 0);
-    // Pass wrong length (extra bytes) — header.payload_length won't match
-    int resp = fw_control_process(&ctx, in_buf, n + 5,
+    // Extend the packet with extra bytes so header.payload_length won't match
+    size_t extended_len = n + 5;
+    // Initialize the extra bytes to avoid reading uninitialized memory
+    memset(in_buf + n, 0xAB, extended_len - n);
+    // Recompute CRC for the extended length so CRC check passes
+    uint32_t crc = fw_crc32(in_buf, extended_len - FW_PROTO_CRC_SIZE);
+    memcpy(in_buf + extended_len - FW_PROTO_CRC_SIZE, &crc, sizeof(crc));
+
+    int resp = fw_control_process(&ctx, in_buf, extended_len,
                                   out_buf, sizeof(out_buf));
     assert(resp == -1);
 

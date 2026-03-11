@@ -42,3 +42,6 @@ endif()
 
 add_executable(device_firmware_demo device_firmware_demo.cpp)
 target_link_libraries(device_firmware_demo PRIVATE thunderbird_sdk)
+if(WIN32)
+    target_link_libraries(device_firmware_demo PRIVATE ws2_32)
+endif()
