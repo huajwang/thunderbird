@@ -125,10 +125,14 @@ int fw_mux_run(sensor_driver_t* sensors[], size_t n_sensors,
             if (payload_len <= 0) continue;
 
             any_data = 1;
-            uint8_t ptype = sensor_pkt_type(sensors[i]->type);
+            sensor_type_t st = sensors[i]->type;
+            if ((unsigned)st >= (unsigned)SENSOR_COUNT) {
+                continue;
+            }
+            uint8_t ptype = sensor_pkt_type(st);
             size_t pkt_len = fw_build_packet(pkt_buf, sizeof(pkt_buf),
                                              ptype,
-                                             seq[sensors[i]->type]++,
+                                             seq[st]++,
                                              (int64_t)ts,
                                              sensor_buf,
                                              (uint32_t)payload_len);

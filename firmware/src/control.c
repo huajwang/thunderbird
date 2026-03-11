@@ -24,25 +24,27 @@ int fw_control_process(fw_control_ctx_t* ctx,
     if (!fw_crc32_validate(in_buf, in_len))
         return -1;
 
-    // Parse header
-    fw_packet_header_t hdr;
-    memcpy(&hdr, in_buf, sizeof(hdr));
+    // Parse header using little-endian loads for portability on big-endian targets
+    uint16_t magic          = fw_load_le16(in_buf);
+    uint8_t  version        = in_buf[2];
+    uint8_t  payload_type   = in_buf[3];
+    uint32_t payload_length = fw_load_le32(in_buf + 16);
 
-    if (hdr.magic != FW_PROTO_MAGIC)
+    if (magic != FW_PROTO_MAGIC)
         return -1;
 
-    if (hdr.version != FW_PROTO_VERSION)
+    if (version != FW_PROTO_VERSION)
         return -1;
 
     // Validate payload_length matches actual data received
-    size_t expected_len = FW_PROTO_HEADER_SIZE + hdr.payload_length + FW_PROTO_CRC_SIZE;
+    size_t expected_len = FW_PROTO_HEADER_SIZE + payload_length + FW_PROTO_CRC_SIZE;
     if (in_len != expected_len)
         return -1;
 
-    if (hdr.payload_length > FW_PROTO_MAX_PAYLOAD)
+    if (payload_length > FW_PROTO_MAX_PAYLOAD)
         return -1;
 
-    switch (hdr.payload_type) {
+    switch (payload_type) {
 
     // ── Handshake ───────────────────────────────────────────────────────
     case FW_PKT_HANDSHAKE: {

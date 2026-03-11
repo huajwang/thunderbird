@@ -79,6 +79,49 @@ typedef struct {
 
 #pragma pack(pop)
 
+// ─── Little-endian load helpers (portable across byte orders) ────────────────
+
+static inline uint16_t fw_load_le16(const uint8_t* p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static inline uint32_t fw_load_le32(const uint8_t* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static inline int64_t fw_load_le64(const uint8_t* p) {
+    uint64_t v = (uint64_t)p[0] | ((uint64_t)p[1] << 8) |
+                 ((uint64_t)p[2] << 16) | ((uint64_t)p[3] << 24) |
+                 ((uint64_t)p[4] << 32) | ((uint64_t)p[5] << 40) |
+                 ((uint64_t)p[6] << 48) | ((uint64_t)p[7] << 56);
+    return (int64_t)v;
+}
+
+static inline void fw_store_le16(uint8_t* p, uint16_t v) {
+    p[0] = (uint8_t)(v);
+    p[1] = (uint8_t)(v >> 8);
+}
+
+static inline void fw_store_le32(uint8_t* p, uint32_t v) {
+    p[0] = (uint8_t)(v);
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
+}
+
+static inline void fw_store_le64(uint8_t* p, int64_t v) {
+    uint64_t u = (uint64_t)v;
+    p[0] = (uint8_t)(u);
+    p[1] = (uint8_t)(u >> 8);
+    p[2] = (uint8_t)(u >> 16);
+    p[3] = (uint8_t)(u >> 24);
+    p[4] = (uint8_t)(u >> 32);
+    p[5] = (uint8_t)(u >> 40);
+    p[6] = (uint8_t)(u >> 48);
+    p[7] = (uint8_t)(u >> 56);
+}
+
 // ─── CRC-32 (IEEE 802.3) ───────────────────────────────────────────────────
 
 /// Compute CRC-32 over `len` bytes.

@@ -131,6 +131,7 @@ int fw_transport_accept(fw_transport_t* t) {
 
 #ifndef FW_TCP_ONLY
     // Remember the client's IP; set UDP data port to port+1
+    if (t->port >= 65535) return -1;  // reject: UDP port would wrap to 0
     memset(&t->client_addr, 0, sizeof(t->client_addr));
     t->client_addr.sin_family = AF_INET;
     t->client_addr.sin_addr   = peer.sin_addr;
@@ -203,9 +204,19 @@ int fw_transport_recv(fw_transport_t* t, uint8_t* buf, size_t max_len,
     if (ready == 0) return 0;   // timeout / no data
 #endif
 
+#ifdef _WIN32
     int n = recv(t->client_fd, (char*)buf, (int)max_len, 0);
-    if (n <= 0) return -1;  // disconnected or error
-    return n;
+    if (n > 0) return n;
+    if (n == 0) return -1;  // orderly shutdown
+    return -1;  // error
+#else
+    int n = recv(t->client_fd, (char*)buf, (int)max_len, 0);
+    if (n > 0) return n;
+    if (n == 0) return -1;  // orderly shutdown
+    if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+        return 0;  // transient — treat as no data
+    return -1;  // real error
+#endif
 }
 
 // ─── Status / cleanup ───────────────────────────────────────────────────────

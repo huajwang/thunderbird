@@ -28,7 +28,7 @@ int main(int argc, const char* argv[]) {
     uint16_t port = 5555;
     if (argc > 1) {
         int p = atoi(argv[1]);
-        if (p > 0 && p < 65536) port = (uint16_t)p;
+        if (p > 0 && p < 65535) port = (uint16_t)p;
     }
 
     // ── Device identity ─────────────────────────────────────────────────

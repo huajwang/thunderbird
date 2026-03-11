@@ -32,9 +32,7 @@ uint32_t fw_crc32(const uint8_t* data, size_t len) {
 int fw_crc32_validate(const uint8_t* packet, size_t total_len) {
     if (total_len < FW_PROTO_CRC_SIZE) return 0;
 
-    uint32_t stored = 0;
-    memcpy(&stored, packet + total_len - FW_PROTO_CRC_SIZE,
-           FW_PROTO_CRC_SIZE);
+    uint32_t stored = fw_load_le32(packet + total_len - FW_PROTO_CRC_SIZE);
     uint32_t computed = fw_crc32(packet, total_len - FW_PROTO_CRC_SIZE);
     return stored == computed;
 }
@@ -46,25 +44,24 @@ size_t fw_build_packet(uint8_t* out, size_t out_capacity,
                        int64_t hw_timestamp_ns,
                        const uint8_t* payload, uint32_t payload_len) {
     if (payload_len > 0 && payload == NULL) return 0;
+    if (payload_len > FW_PROTO_MAX_PAYLOAD) return 0;
     size_t total = FW_PROTO_HEADER_SIZE + payload_len + FW_PROTO_CRC_SIZE;
     if (total > out_capacity) return 0;
 
-    fw_packet_header_t hdr;
-    memset(&hdr, 0, sizeof(hdr));
-    hdr.magic           = FW_PROTO_MAGIC;
-    hdr.version         = FW_PROTO_VERSION;
-    hdr.payload_type    = pkt_type;
-    hdr.sequence        = seq;
-    hdr.hw_timestamp_ns = hw_timestamp_ns;
-    hdr.payload_length  = payload_len;
+    // Write header fields in little-endian for portability
+    memset(out, 0, FW_PROTO_HEADER_SIZE);
+    fw_store_le16(out, FW_PROTO_MAGIC);
+    out[2] = FW_PROTO_VERSION;
+    out[3] = pkt_type;
+    fw_store_le32(out + 4, seq);
+    fw_store_le64(out + 8, hw_timestamp_ns);
+    fw_store_le32(out + 16, payload_len);
 
-    memcpy(out, &hdr, FW_PROTO_HEADER_SIZE);
     if (payload_len > 0 && payload != NULL)
         memcpy(out + FW_PROTO_HEADER_SIZE, payload, payload_len);
 
     uint32_t crc = fw_crc32(out, FW_PROTO_HEADER_SIZE + payload_len);
-    memcpy(out + FW_PROTO_HEADER_SIZE + payload_len, &crc,
-           FW_PROTO_CRC_SIZE);
+    fw_store_le32(out + FW_PROTO_HEADER_SIZE + payload_len, crc);
 
     return total;
 }
