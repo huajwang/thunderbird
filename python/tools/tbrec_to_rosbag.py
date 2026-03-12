@@ -318,6 +318,19 @@ def _convert_rosbag(input_path: str, output_path: str) -> None:
                 )
                 w, h, stride, pf, seq, pix_sz = parts
                 pix_data = payload[CAMERA_REC_HEADER_SIZE : CAMERA_REC_HEADER_SIZE + pix_sz]
+
+                # Re-pack rows to remove any padding so that serialise_image(),
+                # which assumes step = width * bytes_per_pixel, sees a tightly
+                # packed image buffer.
+                if w > 0 and h > 0 and stride > 0:
+                    bpp = stride // w
+                    row_size_no_padding = w * bpp
+                    if row_size_no_padding > 0 and row_size_no_padding != stride:
+                        pix_data = b"".join(
+                            pix_data[r * stride : r * stride + row_size_no_padding]
+                            for r in range(h)
+                        )
+
                 msg = serialise_image(ts, "thunderbird_camera", w, h, pf, pix_data)
                 writer.write("/thunderbird/camera/image", msg, ts)
                 counts["camera"] += 1
@@ -361,6 +374,17 @@ def _convert_raw(input_path: str, output_path: str) -> None:
                 )
                 w, h, stride, pf, seq, pix_sz = parts
                 pix_data = payload[CAMERA_REC_HEADER_SIZE : CAMERA_REC_HEADER_SIZE + pix_sz]
+
+                # Re-pack rows to remove any padding (see rosbag path above).
+                if w > 0 and h > 0 and stride > 0:
+                    bpp = stride // w
+                    row_size_no_padding = w * bpp
+                    if row_size_no_padding > 0 and row_size_no_padding != stride:
+                        pix_data = b"".join(
+                            pix_data[r * stride : r * stride + row_size_no_padding]
+                            for r in range(h)
+                        )
+
                 msg = serialise_image(ts, "thunderbird_camera", w, h, pf, pix_data)
                 out = os.path.join(output_path, f"camera_{counts['camera']:06d}.cdr")
                 with open(out, "wb") as f:

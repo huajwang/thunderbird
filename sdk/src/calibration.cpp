@@ -96,9 +96,12 @@ bool parse_bool(const std::string& s, bool def = false) {
 
 DistortionModel parse_distortion_model(const std::string& s) {
     std::string t = trim(s);
-    // Strip quotes
-    if (t.size() >= 2 && (t.front() == '"' || t.front() == '\''))
+    // Strip matching quotes at both ends (either "..." or '...')
+    if (t.size() >= 2 &&
+        ((t.front() == '"' && t.back() == '"') ||
+         (t.front() == '\'' && t.back() == '\''))) {
         t = t.substr(1, t.size() - 2);
+    }
     if (t == "radtan" || t == "radial_tangential" || t == "RadialTangential")
         return DistortionModel::RadialTangential;
     if (t == "equidistant" || t == "Equidistant")
@@ -296,9 +299,10 @@ bool CalibrationBundle::load_yaml(const std::string& path) {
                 // The seq item line may have a key on it
                 if (l.key == "label") {
                     current_cam.label = trim(l.value);
-                    // Strip quotes
+                    // Strip matching quotes at both ends
                     if (current_cam.label.size() >= 2 &&
-                        (current_cam.label.front() == '"' || current_cam.label.front() == '\''))
+                        ((current_cam.label.front() == '"' && current_cam.label.back() == '"') ||
+                         (current_cam.label.front() == '\'' && current_cam.label.back() == '\'')))
                         current_cam.label = current_cam.label.substr(1, current_cam.label.size() - 2);
                 }
                 continue;
@@ -309,7 +313,8 @@ bool CalibrationBundle::load_yaml(const std::string& path) {
                 if (l.key == "label") {
                     current_cam.label = trim(l.value);
                     if (current_cam.label.size() >= 2 &&
-                        (current_cam.label.front() == '"' || current_cam.label.front() == '\''))
+                        ((current_cam.label.front() == '"' && current_cam.label.back() == '"') ||
+                         (current_cam.label.front() == '\'' && current_cam.label.back() == '\'')))
                         current_cam.label = current_cam.label.substr(1, current_cam.label.size() - 2);
                 } else if (l.key == "time_offset_ns") {
                     current_cam.time_offset_ns = parse_int64(l.value);
@@ -391,7 +396,8 @@ bool CalibrationBundle::load_yaml(const std::string& path) {
                           imu_noise.accel_noise != 0.0 ||
                           imu_noise.gyro_bias_rw != 0.0 ||
                           imu_noise.accel_bias_rw != 0.0);
-    if (!has_extrinsic && !has_imu_noise && cameras.empty())
+    bool has_refine_flag = refine_imu_T_lidar;
+    if (!has_extrinsic && !has_imu_noise && cameras.empty() && !has_refine_flag)
         return false;
 
     return true;

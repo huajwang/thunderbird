@@ -261,7 +261,21 @@ def extract(input_path: str, output_dir: str, binary_pcd: bool = False) -> None:
                     CAMERA_REC_HEADER_FMT, payload[:CAMERA_REC_HEADER_SIZE]
                 )
                 w, h, stride, pf, seq, pix_sz = parts
-                pix_data = payload[CAMERA_REC_HEADER_SIZE : CAMERA_REC_HEADER_SIZE + pix_sz]
+                pix_data = payload[
+                    CAMERA_REC_HEADER_SIZE : CAMERA_REC_HEADER_SIZE + pix_sz
+                ]
+
+                # Re-pack rows to remove any row padding so write_image()
+                # (and the PPM/PGM fallback) see a tightly packed buffer.
+                if w > 0 and h > 0 and stride > 0:
+                    bpp = PIXEL_FORMAT_BPP.get(pf, 1)
+                    row_size_no_padding = w * bpp
+                    if row_size_no_padding > 0 and row_size_no_padding != stride:
+                        pix_data = b"".join(
+                            pix_data[r * stride : r * stride + row_size_no_padding]
+                            for r in range(h)
+                        )
+
                 fname = f"{idx:06d}.png"
                 img_path = os.path.join(camera_dir, fname)
                 write_image(img_path, w, h, pf, pix_data)

@@ -882,6 +882,11 @@ private:
                     auto interp_start = ImuInterpolator::bspline(extended, prev_scan_ts_);
                     imu_block.insert(imu_block.begin(), interp_start);
                     meas.has_boundary_interp = true;
+                } else if (prev_scan_ts_ > 0 && have_before &&
+                           before_boundary.timestamp_ns == prev_scan_ts_) {
+                    // Exact boundary sample — insert directly, no interpolation needed.
+                    imu_block.insert(imu_block.begin(), before_boundary);
+                    meas.has_boundary_interp = true;
                 }
                 if (have_after && extended.back().timestamp_ns > scan_ts) {
                     auto interp_end = ImuInterpolator::bspline(extended, scan_ts);
