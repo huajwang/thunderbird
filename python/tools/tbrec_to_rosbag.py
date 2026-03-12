@@ -69,7 +69,8 @@ def _make_header(ns: int, frame_id: str, seq: int = 0) -> bytes:
     # Header: stamp (8) + frame_id (4+len+1 padded to 4)
     stamp = _make_time(ns)
     frame_len = len(frame_bytes)
-    return stamp + struct.pack("<I", frame_len) + frame_bytes
+    padding = (4 - (frame_len % 4)) % 4
+    return stamp + struct.pack("<I", frame_len) + frame_bytes + (b"\x00" * padding)
 
 
 def serialise_pointcloud2(
@@ -103,9 +104,8 @@ def serialise_pointcloud2(
         # Pad name to 4-byte boundary
         pad = (4 - len(name_b) % 4) % 4
         fields_data += b"\x00" * pad
-        fields_data += struct.pack("<IBI", off, dtype, cnt)
-        # Pad after count
-        fields_data += b"\x00" * 3
+        # PointField: uint32 offset; uint8 datatype; 3 bytes padding; uint32 count
+        fields_data += struct.pack("<IB3xI", off, dtype, cnt)
 
     # Build point data (strip timestamp_offset_ns from each 20-byte record)
     if point_count > 0:

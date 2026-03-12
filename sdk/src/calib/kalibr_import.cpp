@@ -292,22 +292,23 @@ bool importKalibrCamchain(const std::string& path, CalibrationBundle& bundle) {
     bundle.cameras.reserve(cams.size());
 
     for (const auto& kcam : cams) {
+        // Skip sparse placeholders when cam indices are non-contiguous.
+        if (kcam.label.empty()) continue;
+        // Require core camera fields.
+        if (kcam.intrinsics.size() < 4 || kcam.resolution.size() < 2) continue;
+
         CameraCalibration cc;
         cc.label = kcam.label;
 
         // Intrinsics: Kalibr stores [fx, fy, cx, cy]
-        if (kcam.intrinsics.size() >= 4) {
-            cc.intrinsics.fx = kcam.intrinsics[0];
-            cc.intrinsics.fy = kcam.intrinsics[1];
-            cc.intrinsics.cx = kcam.intrinsics[2];
-            cc.intrinsics.cy = kcam.intrinsics[3];
-        }
+        cc.intrinsics.fx = kcam.intrinsics[0];
+        cc.intrinsics.fy = kcam.intrinsics[1];
+        cc.intrinsics.cx = kcam.intrinsics[2];
+        cc.intrinsics.cy = kcam.intrinsics[3];
 
         // Resolution
-        if (kcam.resolution.size() >= 2) {
-            cc.intrinsics.width  = static_cast<uint32_t>(kcam.resolution[0]);
-            cc.intrinsics.height = static_cast<uint32_t>(kcam.resolution[1]);
-        }
+        cc.intrinsics.width  = static_cast<uint32_t>(kcam.resolution[0]);
+        cc.intrinsics.height = static_cast<uint32_t>(kcam.resolution[1]);
 
         // Distortion
         cc.intrinsics.distortion_model = mapDistortionModel(kcam.distortion_model);
@@ -330,7 +331,7 @@ bool importKalibrCamchain(const std::string& path, CalibrationBundle& bundle) {
         bundle.cameras.push_back(std::move(cc));
     }
 
-    return true;
+    return !bundle.cameras.empty();
 }
 
 bool importKalibrImu(const std::string& path, CalibrationBundle& bundle) {

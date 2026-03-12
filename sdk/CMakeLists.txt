@@ -38,7 +38,7 @@ endif()
 # ── Optional Ceres Solver (BALM LiDAR-IMU calibration) ──────────────────────
 if(THUNDERBIRD_HAS_CERES)
     target_compile_definitions(thunderbird_sdk_objects PUBLIC THUNDERBIRD_HAS_CERES=1)
-    target_link_libraries(thunderbird_sdk_objects PRIVATE ceres)
+    target_link_libraries(thunderbird_sdk_objects PRIVATE Ceres::ceres)
 endif()
 
 # ── Optional GPU perception (PointPillars / CenterPoint via TensorRT) ────────

@@ -40,23 +40,23 @@ int main(int argc, char* argv[]) {
     std::string imu_path;
     std::string output_path = "calibration.yaml";
 
-    int i = 1;
-    while (i < argc) {
-        std::string arg = argv[i];
-        if (arg == "--camchain" && i + 1 < argc) {
-            camchain_path = argv[i + 1];
-            i += 2;
-        } else if (arg == "--imu" && i + 1 < argc) {
-            imu_path = argv[i + 1];
-            i += 2;
-        } else if (arg == "-o" && i + 1 < argc) {
-            output_path = argv[i + 1];
-            i += 2;
+    int arg_idx = 1;
+    while (arg_idx < argc) {
+        std::string arg = argv[arg_idx];
+        if (arg == "--camchain" && arg_idx + 1 < argc) {
+            camchain_path = argv[arg_idx + 1];
+            arg_idx += 2;
+        } else if (arg == "--imu" && arg_idx + 1 < argc) {
+            imu_path = argv[arg_idx + 1];
+            arg_idx += 2;
+        } else if (arg == "-o" && arg_idx + 1 < argc) {
+            output_path = argv[arg_idx + 1];
+            arg_idx += 2;
         } else if (arg == "--help") {
             usage(argv[0]);
             return 0;
         } else {
-            std::fprintf(stderr, "Unknown argument: %s\n", argv[i]);
+            std::fprintf(stderr, "Unknown argument: %s\n", argv[arg_idx]);
             usage(argv[0]);
             return 1;
         }

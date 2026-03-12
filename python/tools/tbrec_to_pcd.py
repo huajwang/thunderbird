@@ -165,8 +165,8 @@ def write_image(path: str, width: int, height: int, pixel_format: int, data: byt
             r, g, b = img.split()
             img = Image.merge("RGB", (b, g, r))
         else:
-            # YUYV/NV12 — save as raw
-            _write_raw_image(path, width, height, bpp, data)
+            # YUYV/NV12 and other non-RGB formats — save as raw bytes.
+            _write_raw_dump(path, data)
             return
 
         img.save(path)
@@ -174,8 +174,11 @@ def write_image(path: str, width: int, height: int, pixel_format: int, data: byt
     except ImportError:
         pass
 
-    # Fallback: write PPM/PGM (no external deps)
-    _write_raw_image(path, width, height, bpp, data)
+    # Fallback: write PPM/PGM for RGB/mono formats; raw dump otherwise.
+    if pixel_format in (0, 1, 2):
+        _write_raw_image(path, width, height, bpp, data)
+    else:
+        _write_raw_dump(path, data)
 
 
 def _write_raw_image(path: str, width: int, height: int, bpp: int, data: bytes) -> None:
@@ -188,6 +191,13 @@ def _write_raw_image(path: str, width: int, height: int, bpp: int, data: bytes) 
         else:
             f.write(f"P6\n{width} {height}\n255\n".encode("ascii"))
         f.write(data[: width * height * bpp])
+
+
+def _write_raw_dump(path: str, data: bytes) -> None:
+    """Write bytes to a raw dump for unsupported pixel formats."""
+    out_path = os.path.splitext(path)[0] + ".bin"
+    with open(out_path, "wb") as f:
+        f.write(data)
 
 
 # ---------------------------------------------------------------------------
@@ -255,10 +265,13 @@ def extract(input_path: str, output_dir: str, binary_pcd: bool = False) -> None:
                 actual_name = fname
                 alt = os.path.splitext(fname)[0] + ".pgm"
                 alt2 = os.path.splitext(fname)[0] + ".ppm"
+                alt3 = os.path.splitext(fname)[0] + ".bin"
                 if os.path.exists(os.path.join(camera_dir, alt)):
                     actual_name = alt
                 elif os.path.exists(os.path.join(camera_dir, alt2)):
                     actual_name = alt2
+                elif os.path.exists(os.path.join(camera_dir, alt3)):
+                    actual_name = alt3
                 ts_writer.writerow(["camera", idx, ts, f"camera/{actual_name}"])
                 counts["camera"] += 1
 

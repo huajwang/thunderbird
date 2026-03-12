@@ -5,6 +5,7 @@
 #include "thunderbird/calibration.h"
 
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -101,13 +102,16 @@ static void test_calibration_yaml_roundtrip() {
     bundle.imu_noise.accel_noise = 2.0e-2;
 
     // Save
-    const std::string path = "test_calib_roundtrip.yaml";
-    bool ok = bundle.save_yaml(path);
+    const auto unique_id = std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("test_calib_roundtrip_" + unique_id + ".yaml");
+    bool ok = bundle.save_yaml(path.string());
     assert(ok);
 
     // Load into fresh bundle
     CalibrationBundle loaded;
-    ok = loaded.load_yaml(path);
+    ok = loaded.load_yaml(path.string());
     assert(ok);
 
     // Verify

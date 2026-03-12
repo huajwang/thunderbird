@@ -261,7 +261,6 @@ LidarImuCalibResult calibrateLidarImuWithProgress(
 
         // Transform all points to world frame and build voxel map
         VoxelMap voxels;
-        std::vector<std::pair<size_t, size_t>> point_frame_indices;  // (frame_idx, point_idx)
 
         for (size_t fi = 0; fi < frames.size(); ++fi) {
             const auto& frame = frames[fi];

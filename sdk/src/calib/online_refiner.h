@@ -74,7 +74,7 @@ struct RefinerPoint {
 /// Online extrinsic refiner.
 ///
 /// Feed LiDAR scans via `processFrame()` and read corrections from
-/// `correction()`. Thread-safe for single-writer / single-reader.
+/// `correction()`. Concurrent access must be externally synchronized.
 class OnlineRefiner {
 public:
     explicit OnlineRefiner(const OnlineRefinerConfig& config = {});

@@ -210,6 +210,12 @@ bool CalibrationBundle::load_yaml(const std::string& path) {
     auto lines = tokenize_yaml(fin);
     if (lines.empty()) return false;
 
+    // Replace current bundle state on each load.
+    imu_T_lidar = SensorExtrinsic{};
+    refine_imu_T_lidar = false;
+    imu_noise = ImuNoiseParams{};
+    cameras.clear();
+
     // State machine: track which section we're in
     enum class Section {
         Root, ImuTLidar, ImuNoise, Cameras, CameraItem,

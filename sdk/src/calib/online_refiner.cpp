@@ -215,7 +215,7 @@ bool OnlineRefiner::processFrame(const RefinerPoint* points, int n_points) {
     double q_frame[4] = {1, 0, 0, 0};
     if (axis_len > 1e-8) {
         axis[0] /= axis_len; axis[1] /= axis_len; axis[2] /= axis_len;
-        double angle = -std::acos(std::min(1.0,
+        double angle = std::acos(std::min(1.0,
             normal[0]*up[0] + normal[1]*up[1] + normal[2]*up[2]));
         axisAngleToQuat(axis, angle, q_frame);
     }
@@ -248,8 +248,9 @@ bool OnlineRefiner::processFrame(const RefinerPoint* points, int n_points) {
     // Compute angle from identity quaternion
     double angle_from_id = 2.0 * std::acos(std::min(1.0, std::fabs(correction_.rotation[0])));
     double angle_deg = angle_from_id * 180.0 / M_PI;
+    const double height_delta = correction_.height - config_.min_height;
     correction_.warning = (angle_deg > config_.max_correction_deg) ||
-                          (std::fabs(correction_.height) > config_.max_correction_height);
+                          (std::fabs(height_delta) > config_.max_correction_height);
 
     return true;
 }
