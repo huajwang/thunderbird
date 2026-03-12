@@ -68,3 +68,21 @@ slam:
   sort_window_ns: 5000000
 
   publish_propagated_poses: false    # eval only needs corrected poses
+
+# ── Camera calibration (optional — omit section if no camera) ─────────────
+# Populated by `thunderbird-import-kalibr` or manual measurement.
+# cameras:
+#   - label: "cam0"
+#     time_offset_ns: 0
+#     intrinsics:
+#       fx: 1000.0
+#       fy: 1000.0
+#       cx: 640.0
+#       cy: 360.0
+#       width: 1280
+#       height: 720
+#       distortion_model: radtan
+#       distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+#     imu_T_camera:
+#       rotation:    [1.0, 0.0, 0.0, 0.0]
+#       translation: [0.0, 0.0, 0.0]

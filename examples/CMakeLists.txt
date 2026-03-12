@@ -45,3 +45,6 @@ target_link_libraries(device_firmware_demo PRIVATE thunderbird_sdk)
 if(WIN32)
     target_link_libraries(device_firmware_demo PRIVATE ws2_32)
 endif()
+
+add_executable(import_kalibr_demo import_kalibr_demo.cpp)
+target_link_libraries(import_kalibr_demo PRIVATE thunderbird_sdk)

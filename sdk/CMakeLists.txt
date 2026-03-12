@@ -35,6 +35,12 @@ if(THUNDERBIRD_USE_SIMULATED)
     target_compile_definitions(thunderbird_sdk_objects PUBLIC THUNDERBIRD_SIMULATED=1)
 endif()
 
+# ── Optional Ceres Solver (BALM LiDAR-IMU calibration) ──────────────────────
+if(THUNDERBIRD_HAS_CERES)
+    target_compile_definitions(thunderbird_sdk_objects PUBLIC THUNDERBIRD_HAS_CERES=1)
+    target_link_libraries(thunderbird_sdk_objects PRIVATE ceres)
+endif()
+
 # ── Optional GPU perception (PointPillars / CenterPoint via TensorRT) ────────
 option(THUNDERBIRD_ENABLE_GPU_PERCEPTION
     "Build GPU-accelerated 3D detector backends (requires CUDA + TensorRT)" OFF)
