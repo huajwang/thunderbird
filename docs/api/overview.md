@@ -35,13 +35,14 @@ version bump.
 | Header | Purpose |
 |--------|---------|
 | `thunderbird/device_manager.h` | Primary entry point — lifecycle, callbacks, accessors |
-| `thunderbird/types.h` | Core types — `Status`, `DeviceInfo`, `LidarFrame`, `ImuSample`, `CameraFrame` |
+| `thunderbird/types.h` | Core types — `Status`, `DeviceInfo`, `LidarFrame`, `ImuSample`, `CameraFrame`, `SensorExtrinsic`, `CameraIntrinsics` |
 | `thunderbird/sensor_data.h` | Data abstraction layer types — `LidarFrame`, `ImuFrame`, `ImageFrame` |
 | `thunderbird/time_sync.h` | Time synchronization engine — `SyncedFrame`, `TimeSyncEngine` |
 | `thunderbird/diagnostics.h` | Unified metrics — `DiagnosticsManager`, `DiagnosticsSnapshot` |
 | `thunderbird/recorder.h` | Session recording — `Recorder`, `RecorderStats` |
 | `thunderbird/player.h` | Session playback — `Player`, `PlayerConfig` |
 | `thunderbird/version.h` | Compile-time version macros and runtime queries |
+| `thunderbird/calibration.h` | `CalibrationBundle`, `ImuNoiseParams`, `CameraCalibration` — YAML I/O |
 
 ### Tier 2 — Extension Points (stable interfaces, may add members)
 
@@ -59,6 +60,7 @@ methods or struct members may be added in minor releases.
 | `thunderbird/clock_service.h` | Clock domain management |
 | `thunderbird/device_health_monitor.h` | Health scoring subsystem |
 | `thunderbird/lidar_frame_assembler.h` | Multi-packet scan reassembly |
+| `thunderbird/odom/slam_time_sync.h` | SLAM time-sync with B-spline interpolation |
 
 ### Tier 3 — Internal (no stability guarantees)
 
@@ -78,6 +80,7 @@ Excluded from Doxygen output.  These may change or be removed without notice.
 ```
 thunderbird::           ← Core SDK (DeviceManager, types, transports)
   ├── data::            ← Sensor data, time sync, recording
+  ├── calib::           ← Calibration solvers (rigid-transform, BALM, B-spline)
   ├── logging::         ← Per-module spdlog logging
   ├── perception::      ← 3D detection + tracking
   └── odom::            ← SLAM engine, profiler, health

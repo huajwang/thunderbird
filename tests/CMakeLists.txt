@@ -107,6 +107,11 @@ add_executable(test_imu_interpolation test_imu_interpolation.cpp)
 target_link_libraries(test_imu_interpolation PRIVATE thunderbird_sdk)
 add_test(NAME ImuInterpolation COMMAND test_imu_interpolation)
 
+add_executable(test_kalibr_import test_kalibr_import.cpp)
+target_include_directories(test_kalibr_import PRIVATE ${CMAKE_SOURCE_DIR}/sdk/src)
+target_link_libraries(test_kalibr_import PRIVATE thunderbird_sdk)
+add_test(NAME KalibrImport COMMAND test_kalibr_import)
+
 add_executable(test_clock_service_seed test_clock_service_seed.cpp)
 target_link_libraries(test_clock_service_seed PRIVATE thunderbird_sdk)
 add_test(NAME ClockServiceSeed COMMAND test_clock_service_seed)

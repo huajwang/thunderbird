@@ -291,6 +291,82 @@ def test_lidar_point_data_integrity():
             shutil.rmtree(out_dir)
 
 
+def test_camera_stride_padding():
+    """Camera frames with row padding (stride > width*bpp) are correctly re-packed."""
+    with tempfile.NamedTemporaryFile(suffix=".tbrec", delete=False) as tmp:
+        tbrec_path = tmp.name
+    out_dir = tbrec_path + "_padded"
+    try:
+        # Build a .tbrec manually with a single padded camera frame.
+        # Mono8: bpp=1, width=4, but stride=8 (4 bytes of padding per row).
+        w, h = 4, 3
+        stride = 8  # 4 bytes of content + 4 bytes padding per row
+        pix_format = 0  # Mono8
+        # Pixel data with known values + padding garbage per row
+        rows = []
+        for r in range(h):
+            content = bytes([10 * (r + 1) + c for c in range(w)])  # 10,11,12,13 / 20,21,22,23 / 30,31,32,33
+            padding = bytes([0xFF] * (stride - w))  # 4 garbage bytes
+            rows.append(content + padding)
+        pix_data = b"".join(rows)  # stride * h = 24 bytes total
+
+        cam_hdr = struct.pack(CAMERA_REC_HEADER_FMT,
+                              w, h, stride, pix_format, 0, len(pix_data))
+        payload = cam_hdr + pix_data
+        ts = 1000000
+        rec_hdr = struct.pack(RECORD_HEADER_FMT, 2, ts, len(payload))
+
+        file_hdr = struct.pack(FILE_HEADER_FMT,
+                               FILE_MAGIC, 1, 0,
+                               b"SN001\x00" + b"\x00" * 26,
+                               b"1.0.0\x00" + b"\x00" * 26,
+                               b"TestModel\x00" + b"\x00" * 22,
+                               ts, ts, 1)
+
+        with open(tbrec_path, "wb") as f:
+            f.write(file_hdr)
+            f.write(rec_hdr + payload)
+
+        # Extract using PCD extractor
+        pcd_conv.extract(tbrec_path, out_dir, binary_pcd=False)
+
+        # Find the extracted camera image
+        camera_dir = os.path.join(out_dir, "camera")
+        assert os.path.isdir(camera_dir), "camera dir not created"
+        files = os.listdir(camera_dir)
+        assert len(files) == 1, f"Expected 1 camera file, got {len(files)}"
+
+        # Read the image and verify it has the right size (no padding bytes)
+        img_path = os.path.join(camera_dir, files[0])
+        with open(img_path, "rb") as f:
+            data = f.read()
+
+        # PGM/PNG output should contain the content pixels but not padding.
+        # For PGM ASCII: header + w*h pixel values.  For PNG: decompressed
+        # payload should be w*h bytes.  We just verify the 0xFF padding
+        # garbage doesn't appear in the image portion.
+        #
+        # For Mono8 with these small values (10-33), the 0xFF padding bytes
+        # should not appear if re-packing was correct.
+        # Check file is non-empty and reasonable size
+        assert len(data) > 0, "image file is empty"
+        # For PGM files, verify the raw pixel area doesn't contain 0xFF
+        if files[0].endswith(".pgm"):
+            # PGM P5: header lines, then raw pixel data
+            lines = data.split(b"\n", 3)  # P5 / W H / maxval / data
+            raw_pixels = lines[-1] if len(lines) >= 4 else data
+            # The tightly packed image should be w*h = 12 bytes
+            assert len(raw_pixels) == w * h, f"Expected {w*h} pixel bytes, got {len(raw_pixels)}"
+            assert 0xFF not in raw_pixels, "padding byte 0xFF found in output pixels"
+
+        print("  Camera stride padding    OK")
+    finally:
+        os.unlink(tbrec_path)
+        import shutil
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -304,4 +380,5 @@ if __name__ == "__main__":
     test_pcd_binary_mode()
     test_raw_fallback_converter()
     test_lidar_point_data_integrity()
+    test_camera_stride_padding()
     print("TbrecConverters: ALL TESTS PASSED")

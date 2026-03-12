@@ -16,6 +16,7 @@ cmake -B build \
     -DTHUNDERBIRD_USE_SIMULATED=ON \
     -DTHUNDERBIRD_BUILD_PYTHON=OFF \
     -DTHUNDERBIRD_ENABLE_GPU_PERCEPTION=OFF \
+    -DTHUNDERBIRD_HAS_CERES=OFF \
     -DTHUNDERBIRD_LOG_LEVEL_COMPILE=2        # strip trace/debug at compile time
 ```
 
@@ -191,6 +192,78 @@ std::printf("Recorded: %llu LiDAR, %llu IMU, %llu Camera, %llu bytes\n",
 
 ---
 
+## Calibration Configuration
+
+### CalibrationBundle
+
+Load, modify, and save multi-sensor calibration from YAML:
+
+```cpp
+thunderbird::CalibrationBundle bundle;
+bundle.load_yaml("calibration.yaml");
+
+bundle.imu_T_lidar.translation = {0.0, 0.0, 0.28};
+bundle.refine_imu_T_lidar = true;
+
+bundle.imu_noise.gyro_noise   = 8.0e-4;
+bundle.imu_noise.accel_noise  = 1.0e-2;
+
+bundle.save_yaml("calibration_updated.yaml");
+```
+
+See [Calibration Guide](calibration.md) for the full YAML schema and
+import workflows.
+
+### LiDAR-IMU Calibration (Ceres)
+
+Requires building with `-DTHUNDERBIRD_HAS_CERES=ON`:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `num_rounds` | 20 | Optimization rounds (voxel grid is rebuilt each round) |
+| `voxel_size` | 1.0 | Initial voxel size (metres) |
+| `max_octree_depth` | 5 | Maximum octree subdivision |
+| `min_points_per_voxel` | 20 | Discard sparse voxels |
+| `surface_eigen_ratio` | 16.0 | Eigenvalue ratio for surface features |
+| `corner_eigen_ratio` | 9.0 | Eigenvalue ratio for corner features |
+| `solver_max_iterations` | 30 | Ceres iterations per round |
+| `downsample_size` | 0.2 | Pre-downsample grid (0 = off) |
+
+### LiDAR-Camera Calibration
+
+Dependency-free edge-alignment solver:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `samples_per_stage` | 5000 | Random samples per refinement stage |
+| `num_stages` | 4 | Refinement passes |
+| `init_rot_range_deg` | 1.0 | Initial rotation search range (°) |
+| `init_trans_range_m` | 0.05 | Initial translation search range (m) |
+| `range_decay` | 0.5 | Range reduction factor per stage |
+| `edge_threshold` | 30.0 | Pixel gradient magnitude (0–255) |
+| `min_depth` | 0.5 | Minimum LiDAR depth (metres) |
+
+### Online Refiner
+
+Runtime ground-plane-based mounting correction:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `ground_max_height` | -0.5 | Max Z for ground candidates (metres) |
+| `min_ground_points` | 100 | Minimum points for a valid ground plane |
+| `min_normal_z` | 0.9 | Reject steep planes (0 = vertical, 1 = flat) |
+| `min_height` | 1.0 | Minimum estimated mount height (metres) |
+| `max_correction_deg` | 2.0 | Warning threshold for rotation (°) |
+| `max_correction_height` | 0.10 | Warning threshold for height (metres) |
+
+### SLAM Time-Sync B-Spline
+
+| Parameter | Default | Description |
+|---|---|---|
+| `use_bspline_interpolation` | `false` | Cubic B-spline instead of linear for scan-boundary IMU |
+
+---
+
 ## Environment Variables (planned)
 
 > Note: Environment variable support is **not yet wired into the SDK**. The
@@ -209,6 +282,7 @@ std::printf("Recorded: %llu LiDAR, %llu IMU, %llu Camera, %llu bytes\n",
 
 | Topic | Link |
 |-------|------|
+| Calibration guide | [Calibration](calibration.md) |
 | Time synchronization tuning | [Time Sync Guide](time-synchronization.md) |
 | Perception pipeline details | [Perception Design](../design/PERCEPTION_LAYER_DESIGN.md) |
 | Hardware setup | [Hardware Guide](../getting-started/hardware-setup.md) |

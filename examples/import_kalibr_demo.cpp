@@ -77,14 +77,7 @@ int main(int argc, char* argv[]) {
                          label, p.c_str());
             return false;
         }
-        auto resolved = canonical.string();
-        // Reject any remaining traversal sequences (sanitizer for path injection)
-        if (resolved.find("..") != std::string::npos) {
-            std::fprintf(stderr, "Error: %s path contains invalid traversal: %s\n",
-                         label, p.c_str());
-            return false;
-        }
-        out = resolved;
+        out = canonical.string();
         return true;
     };
 

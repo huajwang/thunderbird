@@ -499,37 +499,45 @@ struct ImuInterpolator {
             w[3] = u3 / 6.0;
         };
 
-        // Compute uniform knot spacing from data range.
+        // Find the segment containing target_ns using actual timestamps,
+        // so the interpolation is correct for non-uniform IMU rates.
+        const double t_target = static_cast<double>(target_ns);
         const double t0 = static_cast<double>(block.front().timestamp_ns);
         const double t_end = static_cast<double>(block.back().timestamp_ns);
-        const double dt = (t_end - t0) / static_cast<double>(n - 1);
 
-        if (dt <= 0.0) {
+        if (t_end <= t0) {
             return block.front();
         }
 
-        // Map target_ns to the spline parameter.
-        double t_rel = (static_cast<double>(target_ns) - t0) / dt;
+        // Clamp target to block range — fall back to endpoint samples.
+        if (target_ns <= block.front().timestamp_ns) return block.front();
+        if (target_ns >= block.back().timestamp_ns)  return block.back();
 
-        // Clamp to valid range.
-        if (t_rel < 0.0) t_rel = 0.0;
-        if (t_rel > static_cast<double>(n - 1)) t_rel = static_cast<double>(n - 1);
-
-        // Find the segment index and local parameter u ∈ [0, 1).
-        auto seg = static_cast<size_t>(t_rel);
+        // Binary search for the segment [seg, seg+1] containing target_ns.
+        size_t seg = 0;
+        for (size_t i = 1; i < n; ++i) {
+            if (block[i].timestamp_ns >= target_ns) {
+                seg = i - 1;
+                break;
+            }
+        }
         if (seg >= n - 1) seg = n - 2;
 
-        // For uniform cubic B-spline with n control points, we need
-        // 4 consecutive control points: seg-1, seg, seg+1, seg+2.
-        // Clamp indices at boundaries.
+        // Local parameter u ∈ [0, 1) within the segment, using actual timestamps.
+        const double seg_t0 = static_cast<double>(block[seg].timestamp_ns);
+        const double seg_t1 = static_cast<double>(block[seg + 1].timestamp_ns);
+        double u = (seg_t1 > seg_t0)
+            ? (t_target - seg_t0) / (seg_t1 - seg_t0)
+            : 0.0;
+        if (u < 0.0) u = 0.0;
+        if (u > 1.0) u = 1.0;
+
+        // For cubic B-spline we need 4 consecutive control points:
+        // seg-1, seg, seg+1, seg+2.  Clamp indices at boundaries.
         size_t i0 = (seg >= 1) ? seg - 1 : 0;
         size_t i1 = seg;
         size_t i2 = (seg + 1 < n) ? seg + 1 : n - 1;
         size_t i3 = (seg + 2 < n) ? seg + 2 : n - 1;
-
-        double u = t_rel - static_cast<double>(seg);
-        if (u < 0.0) u = 0.0;
-        if (u > 1.0) u = 1.0;
 
         double w[4];
         basis(u, w);

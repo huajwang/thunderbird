@@ -43,6 +43,7 @@ comprehensive documentation.
 | **Lock-free `RingBuffer`** | SPSC pattern for high-throughput paths; drops oldest on overflow |
 | **Nearest-neighbour sync** | Simple, deterministic, configurable tolerance — all three sync engines share a unified `ClockService` for drift-compensated timestamps |
 | **PImpl in `DeviceManager`** | Stable ABI; hides internal headers from consumers |
+| **Dependency-free calibration** | Rigid-transform, LiDAR-camera, and online refiner need no external libraries; LiDAR-IMU uses optional Ceres |
 
 ---
 
@@ -54,12 +55,15 @@ thunderbird/
 ├── pyproject.toml          # Python packaging (scikit-build-core)
 ├── sdk/                    # Core SDK (headers, sources, CMake config)
 ├── examples/               # C++ example programs
+├── eval/                   # Sensitivity & robustness evaluation suite
+├── firmware/               # Device firmware stub
 ├── tests/                  # Unit tests (CTest)
-├── python/                 # pybind11 bindings + Python example
+├── python/                 # pybind11 bindings + Python tools & example
 ├── ros2_bridge/            # ROS 2 node
 ├── debian/                 # Debian packaging
 ├── docker/                 # Dockerfiles (runtime + dev)
 ├── scripts/                # Version extraction, changelog, CI helpers
+├── slamd/                  # SLAMD odometry configs (car, drone profiles)
 ├── .github/workflows/      # CI, Release, Promote, Security workflows
 ├── ENVIRONMENTS.md         # Environment protection rules
 └── SECURITY.md             # Vulnerability reporting policy
@@ -108,6 +112,7 @@ cd build && ctest --output-on-failure
 ./build/examples/recorder_demo
 ./build/examples/sync_layer_demo
 ./build/examples/third_party_lidar_demo
+./build/examples/import_kalibr_demo
 
 # Firmware demos (require building/running the stub firmware)
 ./build/examples/firmware_loopback_demo
@@ -187,6 +192,9 @@ device.disconnect();
 | `ImuSample` | `timestamp`, `accel[3]`, `gyro[3]`, `temperature` | SI units (m/s², rad/s, °C) |
 | `CameraFrame` | `timestamp`, `width`, `height`, `format`, `data[]` | Raw pixel buffer |
 | `SyncBundle` | `reference_time`, `lidar`, `imu`, `camera` | Any member may be `nullptr` |
+| `SensorExtrinsic` | `rotation[4]`, `translation[3]` | Quaternion `[w,x,y,z]` + metres; `.inverse()`, `.compose()` |
+| `CameraIntrinsics` | `fx`, `fy`, `cx`, `cy`, `width`, `height`, `distortion_model`, `distortion_coeffs[8]` | Pinhole + radtan/equidist/FOV |
+| `CalibrationBundle` | `imu_T_lidar`, `cameras[]`, `imu_noise` | YAML load/save; derived `lidar_T_camera()` |
 
 ### Sync configuration
 
@@ -496,9 +504,19 @@ print(spatial_sdk.__version__)  # "1.2.3"
 - API versioning & ABI stability (`abi_v0` namespace, `THUNDERBIRD_API` exports)
 - Comprehensive documentation (16 files: guides, troubleshooting, API reference)
 
-### Phase 4 — Perception-ready extensions (next)
+### Phase 4 — Calibration subsystem ✅
+- `CalibrationBundle` with YAML serialization and Kalibr import
+- `SensorExtrinsic` SE(3) transforms with inverse/compose
+- Rigid transform solver (Horn's SVD + RANSAC)
+- LiDAR-IMU calibration (BALM, optional Ceres)
+- LiDAR-Camera calibration (edge alignment, dependency-free)
+- Online extrinsic refiner (ground-plane PCA)
+- Uniform cubic B-spline IMU interpolation
+- `.tbrec` → ROS 2 bag and `.tbrec` → PCD/PNG converter tools
+- SLAMD odometry profiles (car, drone)
+
+### Phase 5 — Perception-ready extensions (next)
 - GPU-accelerated point cloud preprocessing
-- Camera intrinsic / extrinsic calibration storage
 - Multi-device support (multiple `DeviceManager` instances)
 - Object detection pipeline
 

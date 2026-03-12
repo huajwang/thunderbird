@@ -164,7 +164,6 @@ void jacobi_svd3(const double* A, double* U, double sigma[3], double* V) {
     if (mat3_det(U) < 0.0) {
         for (int r = 0; r < 3; ++r)
             m3(U, r, 2) = -m3(U, r, 2);
-        sigma[2] = -sigma[2]; // Mark that we negated
     }
 }
 

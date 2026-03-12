@@ -208,6 +208,43 @@ static void test_bspline_all_channels() {
     std::puts("  bspline all channels     OK");
 }
 
+// ── bspline: non-uniform timestamps ─────────────────────────────────────────
+
+static void test_bspline_nonuniform() {
+    // Non-uniform timestamps: the B-spline should use actual segment endpoints
+    // to compute local parameter u, not assume uniform dt.
+    std::vector<ImuSample> block;
+    // Timestamps: 0, 100, 200, 500, 600, 700 (gap 200→500 is 3× normal)
+    block.push_back(make_imu(0,   0.0, 0.0, 9.81));
+    block.push_back(make_imu(100, 1.0, 0.0, 9.81));
+    block.push_back(make_imu(200, 2.0, 0.0, 9.81));
+    block.push_back(make_imu(500, 5.0, 0.0, 9.81));
+    block.push_back(make_imu(600, 6.0, 0.0, 9.81));
+    block.push_back(make_imu(700, 7.0, 0.0, 9.81));
+
+    // Query at midpoint of the long segment [200, 500] → t=350
+    auto mid = ImuInterpolator::bspline(block, 350);
+    assert(mid.timestamp_ns == 350);
+    // With correct non-uniform handling, the result should be near the
+    // linear interpolation of the underlying ramp (approximately 3.5),
+    // possibly smoothed slightly by the B-spline.  With the old uniform
+    // assumption, the segment index would be wrong.
+    assert(near(mid.accel[0], 3.5, 1.0));   // generous tolerance for B-spline smoothing
+    assert(near(mid.accel[2], 9.81, 0.1));   // Z should stay constant
+
+    // Query near start of long segment
+    auto near_start = ImuInterpolator::bspline(block, 210);
+    assert(near_start.timestamp_ns == 210);
+    assert(near(near_start.accel[0], 2.1, 1.0));
+
+    // Query at an exact sample point
+    auto exact = ImuInterpolator::bspline(block, 500);
+    assert(exact.timestamp_ns == 500);
+    assert(near(exact.accel[0], 5.0, 0.5));
+
+    std::puts("  bspline nonuniform ts    OK");
+}
+
 // ── Config flag exists ──────────────────────────────────────────────────────
 
 static void test_bspline_config_flag() {
@@ -231,6 +268,7 @@ int main() {
     test_bspline_linear();
     test_bspline_vs_lerp_sinusoidal();
     test_bspline_all_channels();
+    test_bspline_nonuniform();
     test_bspline_config_flag();
     std::puts("ImuInterpolation: ALL TESTS PASSED");
     return 0;

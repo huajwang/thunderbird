@@ -160,6 +160,62 @@ static void test_calibration_derived_transforms() {
     std::puts("  CalibrationBundle derived xforms   OK");
 }
 
+// ── load_yaml: refine_imu_T_lidar-only YAML accepted ────────────────────────
+
+static void test_load_yaml_refine_only() {
+    const auto unique_id = std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("test_refine_only_" + unique_id + ".yaml");
+    {
+        std::ofstream f(path);
+        f << "# Minimal YAML with only refine flag\n";
+        f << "refine_imu_T_lidar: true\n";
+    }
+
+    CalibrationBundle bundle;
+    bool ok = bundle.load_yaml(path.string());
+    assert(ok);  // must not reject refine-only YAML
+    assert(bundle.refine_imu_T_lidar);
+
+    std::filesystem::remove(path);
+    std::puts("  load_yaml refine-only          OK");
+}
+
+// ── Quote stripping: mismatched quotes preserved ────────────────────────────
+
+static void test_load_yaml_mismatched_quotes() {
+    // A label with mismatched quotes (e.g. 'cam0") should be preserved as-is.
+    const auto unique_id = std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("test_quotes_" + unique_id + ".yaml");
+    {
+        std::ofstream f(path);
+        f << "imu_T_lidar:\n";
+        f << "  translation: [1.0, 2.0, 3.0]\n";
+        f << "cameras:\n";
+        f << "  - label: 'cam0\"\n";  // mismatched: single-open, double-close
+        f << "    intrinsics:\n";
+        f << "      fx: 500\n";
+        f << "      fy: 500\n";
+        f << "      cx: 320\n";
+        f << "      cy: 240\n";
+        f << "      width: 640\n";
+        f << "      height: 480\n";
+    }
+
+    CalibrationBundle bundle;
+    bool ok = bundle.load_yaml(path.string());
+    assert(ok);
+    assert(!bundle.cameras.empty());
+    // Mismatched quotes should NOT be stripped
+    assert(bundle.cameras[0].label == "'cam0\"");
+
+    std::filesystem::remove(path);
+    std::puts("  load_yaml mismatched quotes    OK");
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -170,6 +226,8 @@ int main() {
     test_extrinsic_compose();
     test_calibration_yaml_roundtrip();
     test_calibration_derived_transforms();
+    test_load_yaml_refine_only();
+    test_load_yaml_mismatched_quotes();
     std::puts("CalibrationTypes: ALL TESTS PASSED");
     return 0;
 }

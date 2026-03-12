@@ -340,6 +340,7 @@ bool importKalibrImu(const std::string& path, CalibrationBundle& bundle) {
 
     std::string line;
     bool in_imu = false;
+    bool parsed_any = false;
 
     while (std::getline(file, line)) {
         std::string stripped = trim(line);
@@ -362,17 +363,22 @@ bool importKalibrImu(const std::string& path, CalibrationBundle& bundle) {
         std::string key = trim(stripped.substr(0, colon));
         std::string val = trim(stripped.substr(colon + 1));
 
-        if (key == "gyroscope_noise_density")
+        if (key == "gyroscope_noise_density") {
             bundle.imu_noise.gyro_noise = parseDouble(val, 1.0e-3);
-        else if (key == "accelerometer_noise_density")
+            parsed_any = true;
+        } else if (key == "accelerometer_noise_density") {
             bundle.imu_noise.accel_noise = parseDouble(val, 1.0e-2);
-        else if (key == "gyroscope_random_walk")
+            parsed_any = true;
+        } else if (key == "gyroscope_random_walk") {
             bundle.imu_noise.gyro_bias_rw = parseDouble(val, 1.0e-5);
-        else if (key == "accelerometer_random_walk")
+            parsed_any = true;
+        } else if (key == "accelerometer_random_walk") {
             bundle.imu_noise.accel_bias_rw = parseDouble(val, 1.0e-4);
+            parsed_any = true;
+        }
     }
 
-    return true;
+    return parsed_any;
 }
 
 bool importKalibrFull(const std::string& camchain_path,

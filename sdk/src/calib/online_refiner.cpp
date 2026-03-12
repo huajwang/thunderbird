@@ -53,9 +53,9 @@ Eigen3Result symEigen3(const double S[6]) {
         double app = col(A, p, p), aqq = col(A, q, q), apq = col(A, p, q);
         double theta;
         if (std::fabs(app - aqq) < 1e-15)
-            theta = std::numbers::pi / 4.0;
+            theta = (apq >= 0.0 ? 1.0 : -1.0) * (std::numbers::pi / 4.0);
         else
-            theta = 0.5 * std::atan2(2.0 * apq, app - aqq);
+            theta = 0.5 * std::atan2(-2.0 * apq, app - aqq);
 
         double c = std::cos(theta), s = std::sin(theta);
 
