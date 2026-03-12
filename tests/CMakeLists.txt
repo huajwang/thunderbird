@@ -81,3 +81,45 @@ add_test(NAME Logging COMMAND test_logging)
 add_executable(test_diagnostics test_diagnostics.cpp)
 target_link_libraries(test_diagnostics PRIVATE thunderbird_sdk Threads::Threads)
 add_test(NAME Diagnostics COMMAND test_diagnostics)
+
+# ── Calibration / Phase 1-8 tests ──────────────────────────────────────────
+
+add_executable(test_calibration_types test_calibration_types.cpp)
+target_link_libraries(test_calibration_types PRIVATE thunderbird_sdk)
+add_test(NAME CalibrationTypes COMMAND test_calibration_types)
+
+add_executable(test_bspline test_bspline.cpp)
+target_include_directories(test_bspline PRIVATE ${CMAKE_SOURCE_DIR}/sdk/src)
+target_link_libraries(test_bspline PRIVATE thunderbird_sdk)
+add_test(NAME BSpline COMMAND test_bspline)
+
+add_executable(test_rigid_transform test_rigid_transform.cpp)
+target_include_directories(test_rigid_transform PRIVATE ${CMAKE_SOURCE_DIR}/sdk/src)
+target_link_libraries(test_rigid_transform PRIVATE thunderbird_sdk)
+add_test(NAME RigidTransform COMMAND test_rigid_transform)
+
+add_executable(test_online_refiner test_online_refiner.cpp)
+target_include_directories(test_online_refiner PRIVATE ${CMAKE_SOURCE_DIR}/sdk/src)
+target_link_libraries(test_online_refiner PRIVATE thunderbird_sdk)
+add_test(NAME OnlineRefiner COMMAND test_online_refiner)
+
+add_executable(test_imu_interpolation test_imu_interpolation.cpp)
+target_link_libraries(test_imu_interpolation PRIVATE thunderbird_sdk)
+add_test(NAME ImuInterpolation COMMAND test_imu_interpolation)
+
+add_executable(test_kalibr_import test_kalibr_import.cpp)
+target_include_directories(test_kalibr_import PRIVATE ${CMAKE_SOURCE_DIR}/sdk/src)
+target_link_libraries(test_kalibr_import PRIVATE thunderbird_sdk)
+add_test(NAME KalibrImport COMMAND test_kalibr_import)
+
+add_executable(test_clock_service_seed test_clock_service_seed.cpp)
+target_link_libraries(test_clock_service_seed PRIVATE thunderbird_sdk)
+add_test(NAME ClockServiceSeed COMMAND test_clock_service_seed)
+
+# Python converter tests
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_FOUND)
+    add_test(NAME TbrecConverters
+             COMMAND ${Python3_EXECUTABLE} test_tbrec_converters.py
+             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()

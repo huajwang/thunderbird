@@ -133,6 +133,34 @@ for frame in player:
 
 ---
 
+## Converting Recordings
+
+`.tbrec` files can be converted to standard formats for use with external
+tools.
+
+### ROS 2 Bag
+
+```bash
+python python/tools/tbrec_to_rosbag.py session.tbrec -o session_bag
+```
+
+Publishes `/thunderbird/lidar/points` (PointCloud2), `/thunderbird/imu/data`
+(Imu), and `/thunderbird/camera/image` (Image).  Requires `rosbag2-py`.
+
+### PCD + PNG Extraction
+
+```bash
+python python/tools/tbrec_to_pcd.py session.tbrec -o session_extracted
+python python/tools/tbrec_to_pcd.py session.tbrec --binary-pcd
+```
+
+Produces individual `.pcd`, `.png`, and `.csv` files suitable for OpenCalib
+and other offline calibration tools.  Requires only Python stdlib.
+
+See [Calibration Guide](calibration.md#converter-tools) for detailed usage.
+
+---
+
 ## Further Reading
 
 - [Recorder Demo](../examples/recorder_demo.cpp) — full example

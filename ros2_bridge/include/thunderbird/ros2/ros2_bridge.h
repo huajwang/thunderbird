@@ -56,10 +56,12 @@
 #include <sensor_msgs/msg/point_field.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
 #include <std_msgs/msg/string.hpp>
 
 // SDK headers
 #include "thunderbird/device_manager.h"
+#include "thunderbird/calibration.h"
 #include "thunderbird/ros2_helpers.h"
 
 #include <atomic>
@@ -81,6 +83,7 @@ struct Ros2BridgeConfig {
     std::string sync_camera_topic = "/thunderbird/synced_frame/camera";
     std::string sync_imu_topic    = "/thunderbird/synced_frame/imu";
     std::string sync_info_topic   = "/thunderbird/synced_frame/info";
+    std::string camera_info_topic  = "/thunderbird/camera/camera_info";
 
     // ── Frame IDs ───────────────────────────────────────────────────────
     std::string lidar_frame_id  = "thunderbird_lidar";
@@ -92,6 +95,11 @@ struct Ros2BridgeConfig {
     bool publish_raw_imu    = true;
     bool publish_raw_camera = true;
     bool publish_synced     = true;
+    bool publish_camera_info = true;
+
+    /// Camera intrinsics to publish on camera_info topic.
+    /// Leave default (invalid) to skip CameraInfo publishing.
+    CameraIntrinsics camera_intrinsics;
 
     // ── QoS ─────────────────────────────────────────────────────────────
     /// Queue depth for all sensor publishers.  Uses BEST_EFFORT +
@@ -200,6 +208,9 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr lidar_pub_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr         imu_pub_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr       camera_pub_;
+
+    // CameraInfo publisher (populated from CalibrationBundle)
+    rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr  camera_info_pub_;
 
     // Synced-frame publishers
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr sync_lidar_pub_;

@@ -165,6 +165,12 @@ struct SlamTimeSyncConfig {
     /// missing, the engine falls back to Host automatically.
     ClockDomain clock_domain = ClockDomain::Hardware;
 
+    // ── Interpolation ───────────────────────────────────────────────────
+    /// Use cubic B-spline interpolation for scan-boundary IMU samples
+    /// instead of linear interpolation.  Smoother at low IMU rates
+    /// (< 200 Hz); negligible difference at 400+ Hz.
+    bool use_bspline_interpolation = false;
+
     // ── Output ──────────────────────────────────────────────────────────
     /// Assembled ScanMeasurement output queue depth.
     static constexpr size_t kOutputQueueCapacity = 16;
@@ -438,6 +444,124 @@ struct ImuInterpolator {
         if (target_ns <= a.timestamp_ns) return a;
         if (target_ns >= b.timestamp_ns) return b;
         return lerp(a, b, target_ns);
+    }
+
+    /// Cubic B-spline interpolation over an IMU block at target_ns.
+    ///
+    /// Fits a uniform cubic B-spline through the IMU samples and evaluates
+    /// at target_ns for smoother boundary synthesis.  Falls back to linear
+    /// interpolation when there are fewer than 4 samples (minimum needed
+    /// for a cubic B-spline segment).
+    ///
+    /// @param block  Monotonically increasing IMU samples (N >= 2).
+    /// @param target_ns  Timestamp to interpolate at (must be within
+    ///                   block time range).
+    /// @return Interpolated IMU sample at target_ns.
+    [[nodiscard]] static ImuSample bspline(
+        const std::vector<ImuSample>& block,
+        int64_t target_ns) noexcept
+    {
+        const size_t n = block.size();
+
+        // Need at least 4 control points for cubic B-spline; fall back.
+        if (n < 4) {
+            if (n < 2) {
+                ImuSample s{};
+                s.timestamp_ns = target_ns;
+                if (n == 1) s = block[0];
+                s.timestamp_ns = target_ns;
+                return s;
+            }
+            // Binary search for the bracketing pair.
+            const auto it = std::lower_bound(
+                block.begin(), block.end(), target_ns,
+                [](const ImuSample& s, int64_t ts) {
+                    return s.timestamp_ns < ts;
+                });
+
+            if (it == block.begin())
+                return lerp_clamped(block[0], block[1], target_ns);
+            if (it == block.end())
+                return lerp_clamped(block[n - 2], block[n - 1], target_ns);
+
+            const size_t hi = static_cast<size_t>(it - block.begin());
+            return lerp_clamped(block[hi - 1], block[hi], target_ns);
+        }
+
+        // Uniform cubic B-spline basis weights: M * [1, u, u², u³]^T / 6
+        // where M is the standard uniform cubic B-spline matrix.
+        auto basis = [](double u, double* w) {
+            const double u2 = u * u;
+            const double u3 = u2 * u;
+            w[0] = (1.0 - 3.0 * u + 3.0 * u2 - u3) / 6.0;
+            w[1] = (4.0 - 6.0 * u2 + 3.0 * u3) / 6.0;
+            w[2] = (1.0 + 3.0 * u + 3.0 * u2 - 3.0 * u3) / 6.0;
+            w[3] = u3 / 6.0;
+        };
+
+        // Find the segment containing target_ns and compute the local
+        // parameter u from actual timestamps.  Note: the basis weights above
+        // are for a uniform-knot cubic B-spline, so with non-uniform sample
+        // spacing this acts as an ad-hoc 4-point smoother rather than a true
+        // non-uniform B-spline.  This is acceptable for IMU data where the
+        // sample rate is nearly constant.
+        const double t_target = static_cast<double>(target_ns);
+        const double t0 = static_cast<double>(block.front().timestamp_ns);
+        const double t_end = static_cast<double>(block.back().timestamp_ns);
+
+        if (t_end <= t0) {
+            return block.front();
+        }
+
+        // Clamp target to block range — fall back to endpoint samples.
+        if (target_ns <= block.front().timestamp_ns) return block.front();
+        if (target_ns >= block.back().timestamp_ns)  return block.back();
+
+        // Binary search for the segment [seg, seg+1] containing target_ns.
+        size_t seg = 0;
+        for (size_t i = 1; i < n; ++i) {
+            if (block[i].timestamp_ns >= target_ns) {
+                seg = i - 1;
+                break;
+            }
+        }
+        if (seg >= n - 1) seg = n - 2;
+
+        // Local parameter u ∈ [0, 1) within the segment, using actual timestamps.
+        const double seg_t0 = static_cast<double>(block[seg].timestamp_ns);
+        const double seg_t1 = static_cast<double>(block[seg + 1].timestamp_ns);
+        double u = (seg_t1 > seg_t0)
+            ? (t_target - seg_t0) / (seg_t1 - seg_t0)
+            : 0.0;
+        if (u < 0.0) u = 0.0;
+        if (u > 1.0) u = 1.0;
+
+        // For cubic B-spline we need 4 consecutive control points:
+        // seg-1, seg, seg+1, seg+2.  Clamp indices at boundaries.
+        size_t i0 = (seg >= 1) ? seg - 1 : 0;
+        size_t i1 = seg;
+        size_t i2 = (seg + 1 < n) ? seg + 1 : n - 1;
+        size_t i3 = (seg + 2 < n) ? seg + 2 : n - 1;
+
+        double w[4];
+        basis(u, w);
+
+        ImuSample result;
+        result.timestamp_ns = target_ns;
+
+        for (int c = 0; c < 3; ++c) {
+            result.accel[c] =
+                w[0] * block[i0].accel[c] + w[1] * block[i1].accel[c] +
+                w[2] * block[i2].accel[c] + w[3] * block[i3].accel[c];
+            result.gyro[c] =
+                w[0] * block[i0].gyro[c] + w[1] * block[i1].gyro[c] +
+                w[2] * block[i2].gyro[c] + w[3] * block[i3].gyro[c];
+        }
+        result.temperature =
+            w[0] * block[i0].temperature + w[1] * block[i1].temperature +
+            w[2] * block[i2].temperature + w[3] * block[i3].temperature;
+
+        return result;
     }
 };
 
@@ -755,24 +879,50 @@ private:
 
             // ── Boundary interpolation ──────────────────────────────
             // Synthesize exact samples at prev_scan_ts_ and scan_ts.
+            // When use_bspline_interpolation is enabled, use B-spline
+            // over the full IMU block for smoother interpolation.
 
-            if (prev_scan_ts_ > 0 && have_before && !imu_block.empty()) {
-                // Interpolate at prev_scan_ts_ between before_boundary
-                // and the first sample in the block.
-                auto interp_start = ImuInterpolator::lerp_clamped(
-                    before_boundary, imu_block.front(), prev_scan_ts_);
-                imu_block.insert(imu_block.begin(), interp_start);
-                meas.has_boundary_interp = true;
-            }
+            if (config_.use_bspline_interpolation && imu_block.size() >= 4) {
+                // B-spline mode: build extended block with anchors.
+                std::vector<ImuSample> extended;
+                extended.reserve(imu_block.size() + 2);
+                if (have_before) extended.push_back(before_boundary);
+                for (auto& s : imu_block) extended.push_back(s);
+                if (have_after) extended.push_back(after_boundary);
 
-            if (!imu_block.empty() && have_after) {
-                // Interpolate at scan_ts between the last block sample
-                // and the first sample after the boundary.
-                auto interp_end = ImuInterpolator::lerp_clamped(
-                    imu_block.back(), after_boundary, scan_ts);
-                if (interp_end.timestamp_ns != imu_block.back().timestamp_ns) {
-                    imu_block.push_back(interp_end);
+                if (prev_scan_ts_ > 0 && extended.front().timestamp_ns < prev_scan_ts_) {
+                    auto interp_start = ImuInterpolator::bspline(extended, prev_scan_ts_);
+                    imu_block.insert(imu_block.begin(), interp_start);
                     meas.has_boundary_interp = true;
+                } else if (prev_scan_ts_ > 0 && have_before &&
+                           before_boundary.timestamp_ns == prev_scan_ts_) {
+                    // Exact boundary sample — insert directly, no interpolation needed.
+                    imu_block.insert(imu_block.begin(), before_boundary);
+                    meas.has_boundary_interp = true;
+                }
+                if (have_after && extended.back().timestamp_ns > scan_ts) {
+                    auto interp_end = ImuInterpolator::bspline(extended, scan_ts);
+                    if (interp_end.timestamp_ns != imu_block.back().timestamp_ns) {
+                        imu_block.push_back(interp_end);
+                        meas.has_boundary_interp = true;
+                    }
+                }
+            } else {
+                // Linear interpolation (default).
+                if (prev_scan_ts_ > 0 && have_before && !imu_block.empty()) {
+                    auto interp_start = ImuInterpolator::lerp_clamped(
+                        before_boundary, imu_block.front(), prev_scan_ts_);
+                    imu_block.insert(imu_block.begin(), interp_start);
+                    meas.has_boundary_interp = true;
+                }
+
+                if (!imu_block.empty() && have_after) {
+                    auto interp_end = ImuInterpolator::lerp_clamped(
+                        imu_block.back(), after_boundary, scan_ts);
+                    if (interp_end.timestamp_ns != imu_block.back().timestamp_ns) {
+                        imu_block.push_back(interp_end);
+                        meas.has_boundary_interp = true;
+                    }
                 }
             }
 

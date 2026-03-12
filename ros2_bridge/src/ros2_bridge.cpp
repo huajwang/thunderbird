@@ -42,6 +42,13 @@ Ros2Bridge::Ros2Bridge(rclcpp::Node::SharedPtr node,
             config_.camera_topic, sensor_qos);
     }
 
+    // ── Create CameraInfo publisher ────────────────────────────────────
+    if (config_.publish_camera_info && config_.camera_intrinsics.valid()) {
+        // CameraInfo uses RELIABLE QoS (small, ~10 Hz, latched/transient-local)
+        camera_info_pub_ = node_->create_publisher<sensor_msgs::msg::CameraInfo>(
+            config_.camera_info_topic, rclcpp::QoS(10).transient_local());
+    }
+
     // ── Create synced-frame publishers ──────────────────────────────────
     if (config_.publish_synced) {
         sync_lidar_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>(
@@ -195,6 +202,55 @@ void Ros2Bridge::onCamera(const data::ImageFrame& f) {
     auto msg = buildImage(f, config_.camera_frame_id);
     camera_pub_->publish(msg);
     camera_count_.fetch_add(1, std::memory_order_relaxed);
+
+    // Publish CameraInfo alongside each image
+    if (camera_info_pub_) {
+        sensor_msgs::msg::CameraInfo ci;
+        ci.header = msg.header;
+        ci.width  = config_.camera_intrinsics.width;
+        ci.height = config_.camera_intrinsics.height;
+
+        // Distortion model name
+        switch (config_.camera_intrinsics.distortion_model) {
+            case thunderbird::DistortionModel::RadialTangential:
+                ci.distortion_model = "plumb_bob"; break;
+            case thunderbird::DistortionModel::Equidistant:
+                ci.distortion_model = "equidistant"; break;
+            case thunderbird::DistortionModel::FieldOfView:
+                ci.distortion_model = ""; break;  // non-standard; omit per REP-104
+            default:
+                ci.distortion_model = ""; break;
+        }
+
+        // Distortion coefficients
+        int n = 0;
+        switch (config_.camera_intrinsics.distortion_model) {
+            case thunderbird::DistortionModel::RadialTangential: n = 5; break;
+            case thunderbird::DistortionModel::Equidistant:      n = 4; break;
+            case thunderbird::DistortionModel::FieldOfView:      n = 1; break;
+            default: break;
+        }
+        ci.d.assign(config_.camera_intrinsics.distortion_coeffs.begin(),
+                     config_.camera_intrinsics.distortion_coeffs.begin() + n);
+
+        // Camera matrix K (3×3, row-major)
+        const auto& intr = config_.camera_intrinsics;
+        ci.k = {intr.fx, 0.0,     intr.cx,
+                 0.0,     intr.fy, intr.cy,
+                 0.0,     0.0,     1.0};
+
+        // Rectification matrix (identity for monocular)
+        ci.r = {1.0, 0.0, 0.0,
+                 0.0, 1.0, 0.0,
+                 0.0, 0.0, 1.0};
+
+        // Projection matrix P (3×4)
+        ci.p = {intr.fx, 0.0,     intr.cx, 0.0,
+                 0.0,     intr.fy, intr.cy, 0.0,
+                 0.0,     0.0,     1.0,     0.0};
+
+        camera_info_pub_->publish(ci);
+    }
 }
 
 void Ros2Bridge::onSyncedFrame(const data::SyncedFrame& sf) {

@@ -277,6 +277,25 @@ public:
         fire_pending_events();
     }
 
+    /// Seed the clock model with a known time offset (e.g. from Kalibr
+    /// calibration).  This initializes β (offset) so the OLS model
+    /// converges faster — typically < 1 second instead of ~5 seconds.
+    ///
+    /// @param offset_ns  Known offset in nanoseconds (host − hardware).
+    ///                   From Kalibr: use -timeshift_cam_imu * 1e9.
+    void seed_offset(double offset_ns) {
+        {
+            std::lock_guard lk(write_mu_);
+            beta_ = offset_ns;
+            alpha_ = 1.0;  // Assume no drift initially
+            diag_.offset_ns = offset_ns;
+            diag_.calibrated = true;
+            publish_model(alpha_, beta_, true);
+            emit(ClockEvent::Calibrated);
+        }
+        fire_pending_events();
+    }
+
 private:
     // ── Core observation logic (must be called with write_mu_ held) ─────
 

@@ -151,6 +151,142 @@ inline const char* status_string(Status s) {
     return "Unknown";
 }
 
+// ─── Camera intrinsic calibration ──────────────────────────────────────────
+
+/// Distortion model identifier (matches Kalibr / OpenCV conventions).
+enum class DistortionModel : uint8_t {
+    None              = 0,   ///< No distortion
+    RadialTangential  = 1,   ///< OpenCV radtan: k1, k2, p1, p2 [, k3]
+    Equidistant       = 2,   ///< Fisheye: k1, k2, k3, k4
+    FieldOfView       = 3,   ///< FOV model: single ω parameter
+};
+
+inline const char* distortion_model_name(DistortionModel m) {
+    switch (m) {
+        case DistortionModel::None:             return "none";
+        case DistortionModel::RadialTangential: return "radtan";
+        case DistortionModel::Equidistant:      return "equidistant";
+        case DistortionModel::FieldOfView:      return "fov";
+    }
+    return "unknown";
+}
+
+/// Camera intrinsic parameters (pinhole model + distortion).
+///
+/// Projection: pixel = [fx*X/Z + cx, fy*Y/Z + cy] after distortion.
+/// Compatible with Kalibr camchain.yaml and OpenCV camera matrices.
+struct CameraIntrinsics {
+    double fx{0};               ///< focal length x (pixels)
+    double fy{0};               ///< focal length y (pixels)
+    double cx{0};               ///< principal point x (pixels)
+    double cy{0};               ///< principal point y (pixels)
+
+    uint32_t width{0};          ///< image width (pixels)
+    uint32_t height{0};         ///< image height (pixels)
+
+    DistortionModel distortion_model{DistortionModel::None};
+
+    /// Distortion coefficients. Interpretation depends on distortion_model:
+    ///   RadialTangential: [k1, k2, p1, p2, k3, 0, 0, 0]
+    ///   Equidistant:      [k1, k2, k3, k4, 0, 0, 0, 0]
+    ///   FieldOfView:      [ω,  0,  0,  0,  0, 0, 0, 0]
+    ///   None:             unused
+    std::array<double, 8> distortion_coeffs{};
+
+    /// True if parameters have been set (not default-constructed).
+    [[nodiscard]] bool valid() const noexcept {
+        return fx > 0 && fy > 0 && width > 0 && height > 0;
+    }
+};
+
+// ─── Rigid-body transform (sensor extrinsic) ──────────────────────────────
+
+/// A rigid-body SE(3) transform between two sensor frames.
+///
+/// Convention: transforms a point from the *source* frame to the *target*
+/// frame.  For example, `imu_T_lidar` transforms a point from LiDAR frame
+/// to IMU frame: p_imu = R * p_lidar + t.
+///
+/// Quaternion: Hamilton convention [w, x, y, z], unit norm.
+struct SensorExtrinsic {
+    std::array<double, 4> rotation{1.0, 0.0, 0.0, 0.0};   ///< [w,x,y,z]
+    std::array<double, 3> translation{0.0, 0.0, 0.0};      ///< metres
+
+    /// Check if this is the identity transform.
+    [[nodiscard]] bool is_identity() const noexcept {
+        return rotation[0] == 1.0 && rotation[1] == 0.0 &&
+               rotation[2] == 0.0 && rotation[3] == 0.0 &&
+               translation[0] == 0.0 && translation[1] == 0.0 &&
+               translation[2] == 0.0;
+    }
+
+    /// Compute the inverse transform.
+    /// If this is A_T_B (B→A), inverse() returns B_T_A (A→B).
+    [[nodiscard]] SensorExtrinsic inverse() const noexcept {
+        // q_inv = conjugate (since unit quaternion)
+        const double w = rotation[0], x = -rotation[1],
+                     y = -rotation[2], z = -rotation[3];
+
+        // R_inv * (-t) = q_inv ⊗ (-t) ⊗ q
+        // For translation: t_inv = -R^T * t
+        // Using quaternion rotation of the negated translation:
+        const double tx = -translation[0], ty = -translation[1],
+                     tz = -translation[2];
+
+        // Rotate (tx, ty, tz) by quaternion (w, x, y, z):
+        // v' = q * v * q^-1, but since q IS the inverse, we use it directly
+        const double t2_0 = w*w + x*x - y*y - z*z;
+        const double t2_1 = 2.0*(x*y - w*z);
+        const double t2_2 = 2.0*(x*z + w*y);
+        const double t2_3 = 2.0*(x*y + w*z);
+        const double t2_4 = w*w - x*x + y*y - z*z;
+        const double t2_5 = 2.0*(y*z - w*x);
+        const double t2_6 = 2.0*(x*z - w*y);
+        const double t2_7 = 2.0*(y*z + w*x);
+        const double t2_8 = w*w - x*x - y*y + z*z;
+
+        return {{w, x, y, z},  // conjugate quaternion IS the inverse rotation
+                {t2_0*tx + t2_1*ty + t2_2*tz,
+                 t2_3*tx + t2_4*ty + t2_5*tz,
+                 t2_6*tx + t2_7*ty + t2_8*tz}};
+    }
+
+    /// Compose two transforms: result = this ∘ other.
+    /// If this is A_T_B and other is B_T_C, result is A_T_C.
+    [[nodiscard]] SensorExtrinsic compose(const SensorExtrinsic& other) const noexcept {
+        // q_result = q_this ⊗ q_other  (Hamilton product)
+        const double aw = rotation[0], ax = rotation[1],
+                     ay = rotation[2], az = rotation[3];
+        const double bw = other.rotation[0], bx = other.rotation[1],
+                     by = other.rotation[2], bz = other.rotation[3];
+
+        const double rw = aw*bw - ax*bx - ay*by - az*bz;
+        const double rx = aw*bx + ax*bw + ay*bz - az*by;
+        const double ry = aw*by - ax*bz + ay*bw + az*bx;
+        const double rz = aw*bz + ax*by - ay*bx + az*bw;
+
+        // t_result = R_this * t_other + t_this
+        // Rotate other.translation by this quaternion:
+        const double ox = other.translation[0], oy = other.translation[1],
+                     oz = other.translation[2];
+
+        const double r00 = 1 - 2*(ay*ay + az*az);
+        const double r01 = 2*(ax*ay - aw*az);
+        const double r02 = 2*(ax*az + aw*ay);
+        const double r10 = 2*(ax*ay + aw*az);
+        const double r11 = 1 - 2*(ax*ax + az*az);
+        const double r12 = 2*(ay*az - aw*ax);
+        const double r20 = 2*(ax*az - aw*ay);
+        const double r21 = 2*(ay*az + aw*ax);
+        const double r22 = 1 - 2*(ax*ax + ay*ay);
+
+        return {{rw, rx, ry, rz},
+                {r00*ox + r01*oy + r02*oz + translation[0],
+                 r10*ox + r11*oy + r12*oz + translation[1],
+                 r20*ox + r21*oy + r22*oz + translation[2]}};
+    }
+};
+
 // ─── Callback typedefs ─────────────────────────────────────────────────────
 
 using LidarCallback  = std::function<void(std::shared_ptr<const LidarFrame>)>;

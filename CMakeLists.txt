@@ -77,6 +77,26 @@ endif()
 if(TARGET spdlog)
     set_property(TARGET spdlog PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
+
+# ── Ceres Solver (optional — enables BALM LiDAR-IMU calibration) ────────────
+option(THUNDERBIRD_ENABLE_CERES
+    "Enable Ceres Solver for advanced calibration (BALM LiDAR-IMU)" OFF)
+
+if(THUNDERBIRD_ENABLE_CERES)
+    find_package(Ceres QUIET)
+    if(Ceres_FOUND)
+        message(STATUS "Thunderbird: Ceres Solver found (${Ceres_VERSION}) — BALM calibration ENABLED")
+        set(THUNDERBIRD_HAS_CERES TRUE)
+    else()
+        message(WARNING "THUNDERBIRD_ENABLE_CERES is ON but Ceres Solver not found. "
+                        "BALM LiDAR-IMU calibration will be disabled.")
+        set(THUNDERBIRD_HAS_CERES FALSE)
+    endif()
+else()
+    message(STATUS "Thunderbird: Ceres Solver DISABLED (BALM calibration not available)")
+    set(THUNDERBIRD_HAS_CERES FALSE)
+endif()
+
 # ── SDK core library ─────────────────────────────────────────────────────────
 add_subdirectory(sdk)
 

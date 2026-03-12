@@ -219,6 +219,40 @@ dev_config.time_sync = config;
 thunderbird::DeviceManager device(dev_config);
 ```
 
+### Clock Service Seeding
+
+If you have a Kalibr time offset, you can **seed** the `ClockService` to
+reduce convergence time from ~5 seconds to under 1 second:
+
+```cpp
+clock_service.seed_offset(bundle.cameras[0].time_offset_ns);
+// Immediately sets calibrated = true with the seeded offset
+```
+
+### B-Spline Boundary Interpolation
+
+The SLAM time-sync engine interpolates IMU samples at scan boundaries.
+At low IMU rates (< 200 Hz), cubic B-spline interpolation produces
+smoother transitions than the default linear interpolation:
+
+```cpp
+SlamTimeSyncConfig slam_cfg;
+slam_cfg.use_bspline_interpolation = true;  // default: false
+```
+
+This uses a uniform cubic B-spline over the IMU block, requiring at
+least 4 samples.  At 400+ Hz the difference is negligible.
+
+### PPS Anchoring
+
+For automotive setups with a PPS (pulse-per-second) signal, the
+`ClockService` can lock to GPS time:
+
+```cpp
+clock_service.observe_pps(host_edge_ns);
+// Fires ClockEvent::PpsLocked once stable, ClockEvent::PpsLost on drift
+```
+
 ---
 
 ## Troubleshooting
@@ -228,7 +262,7 @@ thunderbird::DeviceManager device(dev_config);
 | `camera_misses` increasing | Camera FPS too low or timestamp tolerance too tight | Increase `camera_tolerance_ns` |
 | `imu_gaps` increasing | IMU samples arriving late or out-of-order | Check USB latency; increase IMU buffer |
 | Large `drift_ns_per_sec` | Normal for TCXO oscillators (1–50 ppm) | No action needed — drift is compensated |
-| `calibrated = false` after 30s | Too few packets for OLS model | Check that hardware is sending timestamps |
+| `calibrated = false` after 30s | Too few packets for OLS model | Check that hardware is sending timestamps; or `seed_offset()` from Kalibr |
 
 ---
 
@@ -236,4 +270,5 @@ thunderbird::DeviceManager device(dev_config);
 
 - [ClockService API](../api/overview.md) — full `ClockService` reference
 - [Clock Sync Design Doc](../design/CLOCK_SYNC_DESIGN.md) — internal architecture
+- [Calibration Guide](calibration.md) — extrinsic/intrinsic calibration and Kalibr import
 - [Diagnostics Guide](diagnostics.md) — unified metrics including clock stats
