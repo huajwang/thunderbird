@@ -199,7 +199,7 @@ bool OnlineRefiner::processFrame(const RefinerPoint* points, int n_points) {
 
     // Step 5: Ground intercept = -(normal · centroid) / normal_z
     double intercept = -(normal[0]*cx + normal[1]*cy + normal[2]*cz);
-    double height = -intercept / normal[2];
+    double height = intercept / normal[2];
     if (height < config_.min_height) return false;
 
     // Step 6: Compute rotation that aligns ground normal to [0,0,1]
