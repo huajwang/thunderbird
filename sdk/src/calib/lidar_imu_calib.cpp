@@ -83,10 +83,13 @@ VoxelFeature computeVoxelFeature(const std::vector<Eigen::Vector3d>& points,
     // For corner: λ₃/λ₂ >> 1 (largest eigenvalue dominates)
     if (eigenvalues(0) < 1e-10) return feat;
 
+    if (eigenvalues(1) < 1e-10) return feat;
+
     double ratio = eigenvalues(2) / eigenvalues(0);
+    double corner_spread = eigenvalues(2) / eigenvalues(1);
 
     // Accept features with sufficient eigenvalue spread
-    if (ratio > surface_ratio || eigenvalues(1) / eigenvalues(0) > corner_ratio) {
+    if (ratio > surface_ratio || corner_spread > corner_ratio) {
         feat.center = centroid;
         feat.normal = eigenvectors.col(0);  // Smallest eigenvector = surface normal
         feat.eigen_ratio = ratio;
@@ -291,16 +294,16 @@ LidarImuCalibResult calibrateLidarImuWithProgress(
             }
         }
 
-        // Extract features from voxels
-        std::vector<VoxelFeature> features;
+        // Extract features from voxels (computed once per voxel)
+        std::unordered_map<VoxelKey, VoxelFeature, VoxelKeyHash> feature_map;
         for (auto& [key, pts] : voxels) {
             if (static_cast<int>(pts.size()) < config.min_points_per_voxel) continue;
             auto feat = computeVoxelFeature(pts, config.surface_eigen_ratio,
                                             config.corner_eigen_ratio);
-            if (feat.is_valid) features.push_back(feat);
+            if (feat.is_valid) feature_map.emplace(key, std::move(feat));
         }
 
-        if (features.empty()) continue;
+        if (feature_map.empty()) continue;
 
         // Build Ceres problem
         ceres::Problem problem;
@@ -339,14 +342,9 @@ LidarImuCalibResult calibrateLidarImuWithProgress(
                 // For now, iterate (features are typically O(1000)).
                 // TODO: Use a hash map for O(1) lookup in production.
 
-                auto it = voxels.find(key);
-                if (it == voxels.end()) continue;
-                if (static_cast<int>(it->second.size()) < config.min_points_per_voxel)
-                    continue;
-
-                auto feat = computeVoxelFeature(it->second, config.surface_eigen_ratio,
-                                                config.corner_eigen_ratio);
-                if (!feat.is_valid) continue;
+                auto fit = feature_map.find(key);
+                if (fit == feature_map.end()) continue;
+                const auto& feat = fit->second;
 
                 problem.AddResidualBlock(
                     BalmSurfaceCost::Create(p_lidar, feat.center, feat.normal,

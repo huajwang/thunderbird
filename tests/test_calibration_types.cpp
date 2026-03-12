@@ -7,6 +7,7 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <numbers>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -71,7 +72,8 @@ static void test_extrinsic_compose() {
 
     // 90° rotation around Z: q = [cos(45°), 0, 0, sin(45°)]
     SensorExtrinsic rot;
-    rot.rotation = {std::cos(M_PI / 4), 0.0, 0.0, std::sin(M_PI / 4)};
+    rot.rotation = {std::cos(std::numbers::pi / 4), 0.0, 0.0,
+                    std::sin(std::numbers::pi / 4)};
     rot.translation = {0.0, 0.0, 0.0};
 
     // Compose two 90° rotations = 180° rotation

@@ -473,13 +473,19 @@ struct ImuInterpolator {
                 return s;
             }
             // Binary search for the bracketing pair.
-            size_t lo = 0;
-            for (size_t i = 1; i < n; ++i) {
-                if (block[i].timestamp_ns >= target_ns) { lo = i - 1; break; }
-                lo = i - 1;
-            }
-            if (lo >= n - 1) lo = n - 2;
-            return lerp_clamped(block[lo], block[lo + 1], target_ns);
+            const auto it = std::lower_bound(
+                block.begin(), block.end(), target_ns,
+                [](const ImuSample& s, int64_t ts) {
+                    return s.timestamp_ns < ts;
+                });
+
+            if (it == block.begin())
+                return lerp_clamped(block[0], block[1], target_ns);
+            if (it == block.end())
+                return lerp_clamped(block[n - 2], block[n - 1], target_ns);
+
+            const size_t hi = static_cast<size_t>(it - block.begin());
+            return lerp_clamped(block[hi - 1], block[hi], target_ns);
         }
 
         // Uniform cubic B-spline basis weights: M * [1, u, u², u³]^T / 6
@@ -532,16 +538,16 @@ struct ImuInterpolator {
         result.timestamp_ns = target_ns;
 
         for (int c = 0; c < 3; ++c) {
-            result.accel[c] = static_cast<float>(
+            result.accel[c] =
                 w[0] * block[i0].accel[c] + w[1] * block[i1].accel[c] +
-                w[2] * block[i2].accel[c] + w[3] * block[i3].accel[c]);
-            result.gyro[c] = static_cast<float>(
+                w[2] * block[i2].accel[c] + w[3] * block[i3].accel[c];
+            result.gyro[c] =
                 w[0] * block[i0].gyro[c] + w[1] * block[i1].gyro[c] +
-                w[2] * block[i2].gyro[c] + w[3] * block[i3].gyro[c]);
+                w[2] * block[i2].gyro[c] + w[3] * block[i3].gyro[c];
         }
-        result.temperature = static_cast<float>(
+        result.temperature =
             w[0] * block[i0].temperature + w[1] * block[i1].temperature +
-            w[2] * block[i2].temperature + w[3] * block[i3].temperature);
+            w[2] * block[i2].temperature + w[3] * block[i3].temperature;
 
         return result;
     }

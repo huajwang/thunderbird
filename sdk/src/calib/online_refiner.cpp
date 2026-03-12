@@ -227,6 +227,9 @@ bool OnlineRefiner::processFrame(const RefinerPoint* points, int n_points) {
         ? height_above_min * height_above_min
         : 0.0;
 
+    const int prev_frame_count = correction_.frame_count;
+    const double prev_height = correction_.height;
+
     double q_scale = (correction_.confidence == 0.0)
         ? 1.0
         : confidence / (correction_.confidence + confidence);
@@ -251,11 +254,10 @@ bool OnlineRefiner::processFrame(const RefinerPoint* points, int n_points) {
     // Compute angle from identity quaternion
     double angle_from_id = 2.0 * std::acos(std::min(1.0, std::fabs(correction_.rotation[0])));
     double angle_deg = angle_from_id * 180.0 / std::numbers::pi;
-    // Compare height against the first accepted estimate rather than min_height
-    // (min_height is an acceptance filter, not a nominal baseline).
-    const double height_delta = (correction_.frame_count > 1)
-        ? correction_.height - new_height  // drift from rolling average
-        : 0.0;  // first frame, no baseline yet
+    // Compare frame-to-frame height drift (computed against previous state).
+    const double height_delta = (prev_frame_count > 0)
+        ? (new_height - prev_height)
+        : 0.0;
     correction_.warning = (angle_deg > config_.max_correction_deg) ||
                           (std::fabs(height_delta) > config_.max_correction_height);
 

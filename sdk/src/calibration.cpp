@@ -214,6 +214,11 @@ bool CalibrationBundle::load_yaml(const std::string& path) {
     imu_T_lidar = SensorExtrinsic{};
     refine_imu_T_lidar = false;
     imu_noise = ImuNoiseParams{};
+    // Use zero baseline so "loaded something" checks reflect YAML content.
+    imu_noise.gyro_noise = 0.0;
+    imu_noise.accel_noise = 0.0;
+    imu_noise.gyro_bias_rw = 0.0;
+    imu_noise.accel_bias_rw = 0.0;
     cameras.clear();
 
     // State machine: track which section we're in
@@ -375,13 +380,17 @@ bool CalibrationBundle::load_yaml(const std::string& path) {
     }
 
     // Reject if nothing meaningful was loaded
-    bool has_extrinsic = (imu_T_lidar.rotation[0] != 1.0 ||
-                          imu_T_lidar.rotation[1] != 0.0 ||
-                          imu_T_lidar.translation[0] != 0.0 ||
-                          imu_T_lidar.translation[1] != 0.0 ||
-                          imu_T_lidar.translation[2] != 0.0);
+    bool has_extrinsic = !(imu_T_lidar.rotation[0] == 1.0 &&
+                           imu_T_lidar.rotation[1] == 0.0 &&
+                           imu_T_lidar.rotation[2] == 0.0 &&
+                           imu_T_lidar.rotation[3] == 0.0 &&
+                           imu_T_lidar.translation[0] == 0.0 &&
+                           imu_T_lidar.translation[1] == 0.0 &&
+                           imu_T_lidar.translation[2] == 0.0);
     bool has_imu_noise = (imu_noise.gyro_noise != 0.0 ||
-                          imu_noise.accel_noise != 0.0);
+                          imu_noise.accel_noise != 0.0 ||
+                          imu_noise.gyro_bias_rw != 0.0 ||
+                          imu_noise.accel_bias_rw != 0.0);
     if (!has_extrinsic && !has_imu_noise && cameras.empty())
         return false;
 

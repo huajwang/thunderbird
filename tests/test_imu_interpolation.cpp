@@ -9,6 +9,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <numbers>
 #include <cstdio>
 #include <vector>
 
@@ -145,7 +146,7 @@ static void test_bspline_vs_lerp_sinusoidal() {
     std::vector<ImuSample> block;
     for (int i = 0; i < n; ++i) {
         double t = static_cast<double>(i) * dt_ns / 1.0e9;
-        double ax = std::sin(2.0 * M_PI * freq * t);
+        double ax = std::sin(2.0 * std::numbers::pi * freq * t);
         block.push_back(make_imu(static_cast<int64_t>(i * dt_ns), ax, 0.0, 9.81));
     }
 
@@ -157,7 +158,7 @@ static void test_bspline_vs_lerp_sinusoidal() {
     for (int i = 5; i < n - 5; ++i) {
         int64_t t_ns = static_cast<int64_t>(i * dt_ns + dt_ns / 2);
         double t_sec = static_cast<double>(t_ns) / 1.0e9;
-        double true_val = std::sin(2.0 * M_PI * freq * t_sec);
+        double true_val = std::sin(2.0 * std::numbers::pi * freq * t_sec);
 
         // Linear
         auto lin = ImuInterpolator::lerp(block[i], block[i+1], t_ns);

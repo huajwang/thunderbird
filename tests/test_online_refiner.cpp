@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <numbers>
 #include <cstdio>
 #include <random>
 #include <vector>
@@ -129,7 +130,7 @@ static void test_tilted_ground() {
     OnlineRefiner refiner(cfg);
 
     // Tilted ground: 5° pitch → normal ≈ (-sin5°, 0, cos5°)
-    const double pitch = 5.0 * M_PI / 180.0;
+    const double pitch = 5.0 * std::numbers::pi / 180.0;
     const int n = 400;
     std::vector<RefinerPoint> pts(n);
     std::mt19937 rng(99);
