@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <numbers>
 #include <random>
 
 namespace thunderbird::calib {
@@ -96,7 +97,7 @@ void jacobi_svd3(const double* A, double* U, double sigma[3], double* V) {
 
         double theta;
         if (std::fabs(app - aqq) < eps) {
-            theta = M_PI / 4.0;
+            theta = std::numbers::pi / 4.0;
         } else {
             theta = 0.5 * std::atan2(2.0 * apq, app - aqq);
         }

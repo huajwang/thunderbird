@@ -374,6 +374,17 @@ bool CalibrationBundle::load_yaml(const std::string& path) {
         cameras.push_back(std::move(current_cam));
     }
 
+    // Reject if nothing meaningful was loaded
+    bool has_extrinsic = (imu_T_lidar.rotation[0] != 1.0 ||
+                          imu_T_lidar.rotation[1] != 0.0 ||
+                          imu_T_lidar.translation[0] != 0.0 ||
+                          imu_T_lidar.translation[1] != 0.0 ||
+                          imu_T_lidar.translation[2] != 0.0);
+    bool has_imu_noise = (imu_noise.gyro_noise != 0.0 ||
+                          imu_noise.accel_noise != 0.0);
+    if (!has_extrinsic && !has_imu_noise && cameras.empty())
+        return false;
+
     return true;
 }
 

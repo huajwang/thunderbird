@@ -13,8 +13,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #include "thunderbird/calibration.h"
 
-// Internal headers (in sdk/src/ — not installed)
-#include "../sdk/src/calib/kalibr_import.h"
+// Internal header (exposed via target_include_directories in CMakeLists.txt)
+#include "calib/kalibr_import.h"
 
 #include <cstdio>
 #include <cstdlib>

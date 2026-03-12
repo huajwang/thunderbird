@@ -134,20 +134,20 @@ double computeCost(const CalibPoint3D* points, int n_points,
 // ─── Apply a 6-DOF delta to the current R, t ──────────────────────────────
 
 void applyDelta(const double R_base[9], const double t_base[3],
-                double dr, double dp, double dy,
-                double dx, double ddy, double dz,
+                double droll, double dpitch, double dyaw,
+                double dx, double dy, double dz,
                 double R_out[9], double t_out[3]) {
     // Delta rotation from Euler angles
     double dR[9];
-    eulerToRotation(dr, dp, dy, dR);
+    eulerToRotation(droll, dpitch, dyaw, dR);
 
     // R_new = R_base × dR  (compose in body frame)
     mat3_mul(R_base, dR, R_out);
 
     // t_new = t_base + R_base × [dx, dy, dz]  (delta in body frame)
-    t_out[0] = t_base[0] + R_base[0]*dx + R_base[1]*ddy + R_base[2]*dz;
-    t_out[1] = t_base[1] + R_base[3]*dx + R_base[4]*ddy + R_base[5]*dz;
-    t_out[2] = t_base[2] + R_base[6]*dx + R_base[7]*ddy + R_base[8]*dz;
+    t_out[0] = t_base[0] + R_base[0]*dx + R_base[1]*dy + R_base[2]*dz;
+    t_out[1] = t_base[1] + R_base[3]*dx + R_base[4]*dy + R_base[5]*dz;
+    t_out[2] = t_base[2] + R_base[6]*dx + R_base[7]*dy + R_base[8]*dz;
 }
 
 }  // anonymous namespace
@@ -195,15 +195,15 @@ LidarCameraCalibResult calibrateLidarCameraWithProgress(
         bool improved = false;
 
         for (int s = 0; s < config.samples_per_stage; ++s) {
-            double dr = rot_dist(rng);
-            double dp = rot_dist(rng);
-            double dy = rot_dist(rng);
+            double droll = rot_dist(rng);
+            double dpitch = rot_dist(rng);
+            double dyaw = rot_dist(rng);
             double dx = trans_dist(rng);
-            double ddy = trans_dist(rng);
+            double dy = trans_dist(rng);
             double dz = trans_dist(rng);
 
             double R_cand[9], t_cand[3];
-            applyDelta(R_best, t_best, dr, dp, dy, dx, ddy, dz, R_cand, t_cand);
+            applyDelta(R_best, t_best, droll, dpitch, dyaw, dx, dy, dz, R_cand, t_cand);
 
             int p_cnt, e_cnt;
             double score = computeCost(points, n_points, edge_image, intrinsics,

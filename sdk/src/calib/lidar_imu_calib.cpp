@@ -204,7 +204,10 @@ void downsamplePoints(std::vector<Eigen::Vector3d>& points, double leaf_size) {
         k.x = static_cast<int64_t>(std::floor(p.x() * inv));
         k.y = static_cast<int64_t>(std::floor(p.y() * inv));
         k.z = static_cast<int64_t>(std::floor(p.z() * inv));
-        grid[k] += p;
+        auto& sum = grid[k];
+        if (counts[k] == 0)
+            sum = Eigen::Vector3d::Zero();
+        sum += p;
         counts[k]++;
     }
 

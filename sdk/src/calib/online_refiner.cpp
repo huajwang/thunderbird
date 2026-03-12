@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <numbers>
 #include <vector>
 
 namespace thunderbird::calib {
@@ -52,7 +53,7 @@ Eigen3Result symEigen3(const double S[6]) {
         double app = col(A, p, p), aqq = col(A, q, q), apq = col(A, p, q);
         double theta;
         if (std::fabs(app - aqq) < 1e-15)
-            theta = M_PI / 4.0;
+            theta = std::numbers::pi / 4.0;
         else
             theta = 0.5 * std::atan2(2.0 * apq, app - aqq);
 
@@ -221,8 +222,10 @@ bool OnlineRefiner::processFrame(const RefinerPoint* points, int n_points) {
     }
 
     // Step 7: Confidence-weighted accumulation via SLERP
-    double confidence = height * height - config_.min_height;
-    if (confidence < 0) confidence = 0;
+    const double height_above_min = height - config_.min_height;
+    double confidence = (height_above_min > 0.0)
+        ? height_above_min * height_above_min
+        : 0.0;
 
     double q_scale = (correction_.confidence == 0.0)
         ? 1.0
@@ -247,8 +250,12 @@ bool OnlineRefiner::processFrame(const RefinerPoint* points, int n_points) {
     // Check safety thresholds
     // Compute angle from identity quaternion
     double angle_from_id = 2.0 * std::acos(std::min(1.0, std::fabs(correction_.rotation[0])));
-    double angle_deg = angle_from_id * 180.0 / M_PI;
-    const double height_delta = correction_.height - config_.min_height;
+    double angle_deg = angle_from_id * 180.0 / std::numbers::pi;
+    // Compare height against the first accepted estimate rather than min_height
+    // (min_height is an acceptance filter, not a nominal baseline).
+    const double height_delta = (correction_.frame_count > 1)
+        ? correction_.height - new_height  // drift from rolling average
+        : 0.0;  // first frame, no baseline yet
     correction_.warning = (angle_deg > config_.max_correction_deg) ||
                           (std::fabs(height_delta) > config_.max_correction_height);
 

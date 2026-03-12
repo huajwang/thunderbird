@@ -197,22 +197,26 @@ class TbrecReader:
 
     def __init__(self, path: str):
         self._f = open(path, "rb")
-        raw = self._f.read(FILE_HEADER_SIZE)
-        if len(raw) < FILE_HEADER_SIZE:
-            raise ValueError("File too small for .tbrec header")
+        try:
+            raw = self._f.read(FILE_HEADER_SIZE)
+            if len(raw) < FILE_HEADER_SIZE:
+                raise ValueError("File too small for .tbrec header")
 
-        parts = struct.unpack(FILE_HEADER_FMT, raw)
-        magic = parts[0]
-        if magic != FILE_MAGIC:
-            raise ValueError(f"Bad magic: {magic!r}")
+            parts = struct.unpack(FILE_HEADER_FMT, raw)
+            magic = parts[0]
+            if magic != FILE_MAGIC:
+                raise ValueError(f"Bad magic: {magic!r}")
 
-        self.version = parts[1]
-        self.serial_number = parts[3].split(b"\x00", 1)[0].decode("utf-8", errors="replace")
-        self.firmware_version = parts[4].split(b"\x00", 1)[0].decode("utf-8", errors="replace")
-        self.model_name = parts[5].split(b"\x00", 1)[0].decode("utf-8", errors="replace")
-        self.start_ns = parts[6]
-        self.stop_ns = parts[7]
-        self.total_records = parts[8]
+            self.version = parts[1]
+            self.serial_number = parts[3].split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+            self.firmware_version = parts[4].split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+            self.model_name = parts[5].split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+            self.start_ns = parts[6]
+            self.stop_ns = parts[7]
+            self.total_records = parts[8]
+        except Exception:
+            self._f.close()
+            raise
 
     def __enter__(self):
         return self
@@ -240,7 +244,6 @@ class TbrecReader:
 def convert(input_path: str, output_path: str) -> None:
     try:
         import rosbag2_py
-        from rclpy.serialization import serialize_message
     except ImportError:
         rosbag2_py = None
 

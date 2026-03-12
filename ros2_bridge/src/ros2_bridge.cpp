@@ -44,9 +44,9 @@ Ros2Bridge::Ros2Bridge(rclcpp::Node::SharedPtr node,
 
     // ── Create CameraInfo publisher ────────────────────────────────────
     if (config_.publish_camera_info && config_.camera_intrinsics.valid()) {
-        // CameraInfo uses RELIABLE QoS (small, ~10 Hz, latched-style)
+        // CameraInfo uses RELIABLE QoS (small, ~10 Hz, latched/transient-local)
         camera_info_pub_ = node_->create_publisher<sensor_msgs::msg::CameraInfo>(
-            config_.camera_info_topic, rclcpp::QoS(10));
+            config_.camera_info_topic, rclcpp::QoS(10).transient_local());
     }
 
     // ── Create synced-frame publishers ──────────────────────────────────
@@ -217,7 +217,7 @@ void Ros2Bridge::onCamera(const data::ImageFrame& f) {
             case thunderbird::DistortionModel::Equidistant:
                 ci.distortion_model = "equidistant"; break;
             case thunderbird::DistortionModel::FieldOfView:
-                ci.distortion_model = "fov"; break;
+                ci.distortion_model = ""; break;  // non-standard; omit per REP-104
             default:
                 ci.distortion_model = ""; break;
         }

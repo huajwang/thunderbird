@@ -47,4 +47,5 @@ if(WIN32)
 endif()
 
 add_executable(import_kalibr_demo import_kalibr_demo.cpp)
+target_include_directories(import_kalibr_demo PRIVATE ${CMAKE_SOURCE_DIR}/sdk/src)
 target_link_libraries(import_kalibr_demo PRIVATE thunderbird_sdk)
