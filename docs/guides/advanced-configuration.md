@@ -16,7 +16,7 @@ cmake -B build \
     -DTHUNDERBIRD_USE_SIMULATED=ON \
     -DTHUNDERBIRD_BUILD_PYTHON=OFF \
     -DTHUNDERBIRD_ENABLE_GPU_PERCEPTION=OFF \
-    -DTHUNDERBIRD_HAS_CERES=OFF \
+    -DTHUNDERBIRD_ENABLE_CERES=OFF \
     -DTHUNDERBIRD_LOG_LEVEL_COMPILE=2        # strip trace/debug at compile time
 ```
 
@@ -216,7 +216,7 @@ import workflows.
 
 ### LiDAR-IMU Calibration (Ceres)
 
-Requires building with `-DTHUNDERBIRD_HAS_CERES=ON`:
+Requires building with `-DTHUNDERBIRD_ENABLE_CERES=ON`:
 
 | Parameter | Default | Description |
 |---|---|---|

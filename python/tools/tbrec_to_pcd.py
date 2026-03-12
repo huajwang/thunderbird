@@ -269,10 +269,20 @@ def extract(input_path: str, output_dir: str, binary_pcd: bool = False) -> None:
                 # (and the PPM/PGM fallback) see a tightly packed buffer.
                 if w > 0 and h > 0 and stride > 0:
                     bpp = PIXEL_FORMAT_BPP.get(pf, 1)
-                    row_size_no_padding = w * bpp
-                    if row_size_no_padding > 0 and row_size_no_padding != stride:
+                    expected_row_bytes = w * bpp
+                    frame_bytes = stride * h
+
+                    # Only strip padding when the declared payload size
+                    # matches stride * height (confirming stride-based
+                    # layout) and stride exceeds the actual row size.
+                    if (
+                        bpp > 0
+                        and expected_row_bytes > 0
+                        and pix_sz == frame_bytes
+                        and stride > expected_row_bytes
+                    ):
                         pix_data = b"".join(
-                            pix_data[r * stride : r * stride + row_size_no_padding]
+                            pix_data[r * stride : r * stride + expected_row_bytes]
                             for r in range(h)
                         )
 

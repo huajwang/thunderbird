@@ -175,7 +175,7 @@ Conversion notes:
 A complete example is in `examples/import_kalibr_demo.cpp`:
 
 ```bash
-./build/examples/import_kalibr_demo camchain.yaml imu.yaml output.yaml
+./build/examples/import_kalibr_demo --camchain camchain.yaml --imu imu.yaml -o output.yaml
 ```
 
 ---
@@ -215,7 +215,7 @@ optimization:
 
 // Check if Ceres backend is available
 if (!thunderbird::calib::isLidarImuCalibAvailable()) {
-    // Build with -DTHUNDERBIRD_HAS_CERES=ON to enable
+    // Build with -DTHUNDERBIRD_ENABLE_CERES=ON to enable
 }
 
 std::vector<thunderbird::calib::CalibFrame> frames;

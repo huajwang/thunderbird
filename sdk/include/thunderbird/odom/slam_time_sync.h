@@ -499,8 +499,12 @@ struct ImuInterpolator {
             w[3] = u3 / 6.0;
         };
 
-        // Find the segment containing target_ns using actual timestamps,
-        // so the interpolation is correct for non-uniform IMU rates.
+        // Find the segment containing target_ns and compute the local
+        // parameter u from actual timestamps.  Note: the basis weights above
+        // are for a uniform-knot cubic B-spline, so with non-uniform sample
+        // spacing this acts as an ad-hoc 4-point smoother rather than a true
+        // non-uniform B-spline.  This is acceptable for IMU data where the
+        // sample rate is nearly constant.
         const double t_target = static_cast<double>(target_ns);
         const double t0 = static_cast<double>(block.front().timestamp_ns);
         const double t_end = static_cast<double>(block.back().timestamp_ns);

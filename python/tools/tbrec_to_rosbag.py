@@ -2,8 +2,9 @@
 """
 Thunderbird .tbrec → ROS 2 bag converter.
 
-Reads a .tbrec recording via the Thunderbird Python bindings and writes
-a ROS 2 bag (SQLite3 storage) with standard message types:
+Reads a .tbrec recording using a built-in binary reader (no Thunderbird
+Python bindings required) and writes a ROS 2 bag (SQLite3 storage) with
+standard message types:
 
   /thunderbird/lidar/points     → sensor_msgs/msg/PointCloud2
   /thunderbird/imu/data         → sensor_msgs/msg/Imu
@@ -34,7 +35,7 @@ SENSOR_IMU = 1
 SENSOR_CAMERA = 2
 
 FILE_HEADER_FMT = "<8sII32s32s32sqqQ"
-FILE_HEADER_SIZE = struct.calcsize(FILE_HEADER_FMT)  # 152
+FILE_HEADER_SIZE = struct.calcsize(FILE_HEADER_FMT)
 
 RECORD_HEADER_FMT = "<B3xqI"
 RECORD_HEADER_SIZE = struct.calcsize(RECORD_HEADER_FMT)  # 16
@@ -319,15 +320,24 @@ def _convert_rosbag(input_path: str, output_path: str) -> None:
                 w, h, stride, pf, seq, pix_sz = parts
                 pix_data = payload[CAMERA_REC_HEADER_SIZE : CAMERA_REC_HEADER_SIZE + pix_sz]
 
-                # Re-pack rows to remove any padding so that serialise_image(),
-                # which assumes step = width * bytes_per_pixel, sees a tightly
-                # packed image buffer.
+                # Packed image buffer.  Bytes-per-pixel must come from the
+                # pixel format, not from the stride (which may include padding).
                 if w > 0 and h > 0 and stride > 0:
-                    bpp = stride // w
-                    row_size_no_padding = w * bpp
-                    if row_size_no_padding > 0 and row_size_no_padding != stride:
+                    bpp = PIXEL_FORMAT_BPP.get(pf, 1)
+                    expected_row_bytes = w * bpp
+                    frame_bytes = stride * h
+
+                    # Only strip padding when the declared payload size matches
+                    # stride * height and stride is larger than the actual row
+                    # size implied by the pixel format.
+                    if (
+                        bpp > 0
+                        and expected_row_bytes > 0
+                        and pix_sz == frame_bytes
+                        and stride > expected_row_bytes
+                    ):
                         pix_data = b"".join(
-                            pix_data[r * stride : r * stride + row_size_no_padding]
+                            pix_data[r * stride : r * stride + expected_row_bytes]
                             for r in range(h)
                         )
 
@@ -377,11 +387,18 @@ def _convert_raw(input_path: str, output_path: str) -> None:
 
                 # Re-pack rows to remove any padding (see rosbag path above).
                 if w > 0 and h > 0 and stride > 0:
-                    bpp = stride // w
-                    row_size_no_padding = w * bpp
-                    if row_size_no_padding > 0 and row_size_no_padding != stride:
+                    bpp = PIXEL_FORMAT_BPP.get(pf, 1)
+                    expected_row_bytes = w * bpp
+                    frame_bytes = stride * h
+
+                    if (
+                        bpp > 0
+                        and expected_row_bytes > 0
+                        and pix_sz == frame_bytes
+                        and stride > expected_row_bytes
+                    ):
                         pix_data = b"".join(
-                            pix_data[r * stride : r * stride + row_size_no_padding]
+                            pix_data[r * stride : r * stride + expected_row_bytes]
                             for r in range(h)
                         )
 

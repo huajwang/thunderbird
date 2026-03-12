@@ -118,7 +118,8 @@ def test_tbrec_reader():
 def test_tbrec_reader_bad_magic():
     """TbrecReader rejects files with bad magic."""
     with tempfile.NamedTemporaryFile(suffix=".tbrec", delete=False) as tmp:
-        tmp.write(b"BADMAGIC" + b"\x00" * 144)
+        pad = struct.calcsize(FILE_HEADER_FMT) - len(b"BADMAGIC")
+        tmp.write(b"BADMAGIC" + b"\x00" * pad)
         path = tmp.name
     try:
         raised = False
