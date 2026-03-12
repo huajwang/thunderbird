@@ -151,9 +151,6 @@ static void test_tilted_ground() {
     assert(c.frame_count > 0);
     // The correction quaternion should have a non-trivial rotation
     // (not perfectly identity anymore due to tilt)
-    double norm_xyz = std::sqrt(c.rotation[1]*c.rotation[1] +
-                                c.rotation[2]*c.rotation[2] +
-                                c.rotation[3]*c.rotation[3]);
     // Should detect some rotation (even if small due to confidence weighting)
     assert(c.confidence > 0.0);
     std::puts("  Tilted ground detection  OK");

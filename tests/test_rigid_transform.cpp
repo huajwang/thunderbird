@@ -24,10 +24,6 @@ static bool near(double a, double b, double tol = kEps) {
 // Rotate point p by quaternion q = [w,x,y,z]
 static void rotate(const double q[4], const double p[3], double out[3]) {
     double w = q[0], x = q[1], y = q[2], z = q[3];
-    double t0 = 2.0 * (-x * p[0] - y * p[1] - z * p[2]);
-    double t1 = 2.0 * (w * p[0] + y * p[2] - z * p[1]);
-    double t2 = 2.0 * (w * p[1] + z * p[0] - x * p[2]);
-    double t3 = 2.0 * (w * p[2] + x * p[1] - y * p[0]);
     // Using standard quaternion rotation formula:
     // p' = q * p * q^-1
     double ww = w*w, xx = x*x, yy = y*y, zz = z*z;

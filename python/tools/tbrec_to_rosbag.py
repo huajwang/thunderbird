@@ -22,7 +22,6 @@ import argparse
 import os
 import struct
 import sys
-from pathlib import Path
 
 # ---------------------------------------------------------------------------
 #  .tbrec binary format constants (from recording_format.h)

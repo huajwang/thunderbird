@@ -18,6 +18,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 
 static void usage(const char* prog) {
@@ -39,14 +40,18 @@ int main(int argc, char* argv[]) {
     std::string imu_path;
     std::string output_path = "calibration.yaml";
 
-    for (int i = 1; i < argc; ++i) {
+    int i = 1;
+    while (i < argc) {
         std::string arg = argv[i];
         if (arg == "--camchain" && i + 1 < argc) {
-            camchain_path = argv[++i];
+            camchain_path = argv[i + 1];
+            i += 2;
         } else if (arg == "--imu" && i + 1 < argc) {
-            imu_path = argv[++i];
+            imu_path = argv[i + 1];
+            i += 2;
         } else if (arg == "-o" && i + 1 < argc) {
-            output_path = argv[++i];
+            output_path = argv[i + 1];
+            i += 2;
         } else if (arg == "--help") {
             usage(argv[0]);
             return 0;
@@ -61,6 +66,28 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "Error: --camchain is required.\n");
         usage(argv[0]);
         return 1;
+    }
+
+    // Validate input files exist before opening (mitigate uncontrolled path usage)
+    auto resolve_input = [](const std::string& p, const char* label, std::string& out) -> bool {
+        std::error_code ec;
+        auto canonical = std::filesystem::canonical(p, ec);
+        if (ec || !std::filesystem::is_regular_file(canonical, ec)) {
+            std::fprintf(stderr, "Error: %s path does not exist or is not a regular file: %s\n",
+                         label, p.c_str());
+            return false;
+        }
+        out = canonical.string();
+        return true;
+    };
+
+    std::string resolved;
+    if (!resolve_input(camchain_path, "camchain", resolved)) return 1;
+    camchain_path = resolved;
+
+    if (!imu_path.empty()) {
+        if (!resolve_input(imu_path, "imu", resolved)) return 1;
+        imu_path = resolved;
     }
 
     thunderbird::CalibrationBundle bundle;
@@ -101,6 +128,23 @@ int main(int argc, char* argv[]) {
             std::printf("  gyro_bias_rw=%.2e  accel_bias_rw=%.2e\n",
                         bundle.imu_noise.gyro_bias_rw, bundle.imu_noise.accel_bias_rw);
         }
+    }
+
+    // Validate output path: resolve parent directory to prevent path traversal
+    {
+        std::error_code ec;
+        auto parent = std::filesystem::absolute(output_path, ec).parent_path();
+        if (ec) {
+            std::fprintf(stderr, "Error: invalid output path: %s\n", output_path.c_str());
+            return 1;
+        }
+        auto canon_parent = std::filesystem::canonical(parent, ec);
+        if (ec || !std::filesystem::is_directory(canon_parent, ec)) {
+            std::fprintf(stderr, "Error: output directory does not exist: %s\n",
+                         parent.string().c_str());
+            return 1;
+        }
+        output_path = (canon_parent / std::filesystem::path(output_path).filename()).string();
     }
 
     // Save to Thunderbird YAML

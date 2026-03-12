@@ -484,7 +484,7 @@ struct ImuInterpolator {
 
         // Uniform cubic B-spline basis weights: M * [1, u, u², u³]^T / 6
         // where M is the standard uniform cubic B-spline matrix.
-        auto basis = [](double u, double w[4]) {
+        auto basis = [](double u, double* w) {
             const double u2 = u * u;
             const double u3 = u2 * u;
             w[0] = (1.0 - 3.0 * u + 3.0 * u2 - u3) / 6.0;

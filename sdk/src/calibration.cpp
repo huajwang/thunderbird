@@ -108,19 +108,6 @@ DistortionModel parse_distortion_model(const std::string& s) {
     return DistortionModel::None;
 }
 
-void parse_extrinsic(SensorExtrinsic& ext,
-                     const std::string& rot_line,
-                     const std::string& trans_line) {
-    auto r = parse_double_array(rot_line);
-    if (r.size() >= 4) {
-        ext.rotation = {r[0], r[1], r[2], r[3]};
-    }
-    auto t = parse_double_array(trans_line);
-    if (t.size() >= 3) {
-        ext.translation = {t[0], t[1], t[2]};
-    }
-}
-
 // Simple key-value map per indentation level
 struct YamlLine {
     int    indent;

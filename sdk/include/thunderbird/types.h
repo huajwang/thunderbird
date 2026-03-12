@@ -245,7 +245,7 @@ struct SensorExtrinsic {
         const double t2_7 = 2.0*(y*z + w*x);
         const double t2_8 = w*w - x*x - y*y + z*z;
 
-        return {{w, -x, -y, -z},  // negate back for the inverse quaternion
+        return {{w, x, y, z},  // conjugate quaternion IS the inverse rotation
                 {t2_0*tx + t2_1*ty + t2_2*tz,
                  t2_3*tx + t2_4*ty + t2_5*tz,
                  t2_6*tx + t2_7*ty + t2_8*tz}};
