@@ -97,9 +97,10 @@ void jacobi_svd3(const double* A, double* U, double sigma[3], double* V) {
 
         double theta;
         if (std::fabs(app - aqq) < eps) {
-            theta = std::numbers::pi / 4.0;
+            theta = (apq > 0.0) ? -std::numbers::pi / 4.0
+                                :  std::numbers::pi / 4.0;
         } else {
-            theta = 0.5 * std::atan2(2.0 * apq, app - aqq);
+            theta = 0.5 * std::atan2(-2.0 * apq, app - aqq);
         }
 
         double c = std::cos(theta);
