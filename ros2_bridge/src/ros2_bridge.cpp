@@ -27,9 +27,6 @@ Ros2Bridge::Ros2Bridge(rclcpp::Node::SharedPtr node,
     // stale data.  The small depth (default 5) keeps memory bounded.
     auto sensor_qos = rclcpp::SensorDataQoS();
 
-    // Publish static TF transforms eagerly so they are available even if
-    // start() is never called (e.g. pull-mode via publishPending()).
-    publishStaticTransforms();
     sensor_qos.keep_last(config_.qos_depth);
 
     // ── Create raw-sensor publishers ────────────────────────────────────
@@ -274,12 +271,11 @@ void Ros2Bridge::publishStaticTransforms() {
 
     std::vector<geometry_msgs::msg::TransformStamped> transforms;
 
-    auto stamp = node_->get_clock()->now();
-
-    auto make_tf = [&stamp](const std::string& parent, const std::string& child,
-                            const SensorExtrinsic& ext) {
+    // Static transforms use zero/epoch timestamp (time-invariant).
+    auto make_tf = [](const std::string& parent, const std::string& child,
+                      const SensorExtrinsic& ext) {
         geometry_msgs::msg::TransformStamped tf;
-        tf.header.stamp = stamp;
+        // Leave stamp at default (0) — static TFs are time-invariant.
         tf.header.frame_id = parent;
         tf.child_frame_id  = child;
         tf.transform.rotation.w = ext.rotation[0];
