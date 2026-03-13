@@ -582,11 +582,10 @@ bool AcmeSlamEngine::initialize(const SlamEngineConfig& config) {
     impl_->esikf.set_noise_model(config.calibration.imu_noise);
     impl_->esikf.set_extrinsic(config.calibration.imu_T_lidar);
 
-    // Propagate refine_imu_T_lidar into the ESIKF parameters so it can
-    // control online refinement of the IMU–LiDAR extrinsic once supported.
-    auto esikf_params = config.esikf;
-    esikf_params.refine_imu_T_lidar = config.calibration.refine_imu_T_lidar;
-    impl_->esikf.set_params(esikf_params);
+    // Configure ESIKF parameters.  The refine_imu_T_lidar calibration flag
+    // is not yet consumed by EsikfConfig; once online extrinsic refinement is
+    // implemented, it should be wired through an explicit API path.
+    impl_->esikf.set_params(config.esikf);
 
     // ── Reset state ─────────────────────────────────────────────────────
     impl_->esikf.reset();

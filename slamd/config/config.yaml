@@ -27,8 +27,10 @@ sensor:
 # ═══════════════════════════════════════════════════════════════════════════
 slam:
   # ── Calibration file (IMU noise, LiDAR↔IMU extrinsic, cameras) ─────
-  # Path to calibration.yaml produced by Kalibr import or manual creation.
+  # Path to a calibration.yaml produced by Kalibr import or manual creation.
   # Contains imu_noise, imu_T_lidar, cameras, and refine_imu_T_lidar.
+  # A default file (identity extrinsic + conservative noise) ships alongside
+  # this config.  Replace it with your own after calibrating your rig.
   calibration_file: "calibration.yaml"
 
   # ── ESIKF convergence ─────────────────────────────────────────────────

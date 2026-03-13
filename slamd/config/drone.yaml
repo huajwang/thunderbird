@@ -23,8 +23,10 @@ sensor:
 
 slam:
   # ── Calibration file (IMU noise, LiDAR↔IMU extrinsic, cameras) ─────
-  # Path to calibration.yaml produced by Kalibr import or manual creation.
+  # Path to a calibration.yaml produced by Kalibr import or manual creation.
   # For this platform: BMI088 IMU + Livox Mid-360.
+  # The default calibration.yaml ships with identity extrinsic and generic
+  # noise values.  Replace it with your platform-specific calibration.
   calibration_file: "calibration.yaml"
 
   # ── ESIKF convergence ─────────────────────────────────────────────────
