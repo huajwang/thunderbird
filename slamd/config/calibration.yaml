@@ -6,7 +6,7 @@
 # your own calibration produced by `import_kalibr_demo` or manual tuning.
 #
 # To calibrate your rig, run Kalibr and import the results:
-#   ./import_kalibr_demo --imu imu.yaml --cam camchain.yaml -o calibration.yaml
+#   ./import_kalibr_demo --imu imu.yaml --camchain camchain.yaml -o calibration.yaml
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
