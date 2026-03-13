@@ -14,6 +14,7 @@
 #include "thunderbird/types.h"
 #include "thunderbird/ros2_helpers.h"
 
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
