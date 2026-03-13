@@ -345,7 +345,7 @@ int main(int argc, char* argv[]) {
                 }
             }
             else if (key == "gyro_noise")      config.calibration.imu_noise.gyro_noise     = std::stod(val);
-            else if (key == "accel_noise")config.calibration.imu_noise.accel_noise    = std::stod(val);
+            else if (key == "accel_noise") config.calibration.imu_noise.accel_noise    = std::stod(val);
             else if (key == "gyro_bias_rw")  config.calibration.imu_noise.gyro_bias_rw  = std::stod(val);
             else if (key == "accel_bias_rw") config.calibration.imu_noise.accel_bias_rw = std::stod(val);
             else if (key == "refine_online") config.calibration.refine_imu_T_lidar = (val == "true");
