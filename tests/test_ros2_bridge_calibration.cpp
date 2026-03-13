@@ -57,51 +57,22 @@ struct CameraInfoFields {
 };
 
 CameraInfoFields buildCameraInfo(const TestBridgeConfig& config) {
+    // Delegate to the production helper in thunderbird/ros2_helpers.h so the
+    // tests exercise the real CameraInfo mapping logic instead of duplicating it.
+    ::thunderbird::CameraInfoFields prod =
+        ::thunderbird::build_camera_info_from_calibration(
+            config.calibration, config.publish_camera_info);
+
     CameraInfoFields ci;
-    if (!config.publish_camera_info ||
-        config.calibration.cameras.empty() ||
-        !config.calibration.cameras[0].intrinsics.valid()) {
-        return ci;
-    }
+    ci.width            = prod.width;
+    ci.height           = prod.height;
+    ci.distortion_model = prod.distortion_model;
+    ci.d                = prod.d;
+    ci.k                = prod.k;
+    ci.r                = prod.r;
+    ci.p                = prod.p;
+    ci.valid            = prod.valid;
 
-    const auto& cam_intr = config.calibration.cameras[0].intrinsics;
-    ci.width  = cam_intr.width;
-    ci.height = cam_intr.height;
-
-    switch (cam_intr.distortion_model) {
-        case DistortionModel::RadialTangential:
-            ci.distortion_model = "plumb_bob"; break;
-        case DistortionModel::Equidistant:
-            ci.distortion_model = "equidistant"; break;
-        case DistortionModel::FieldOfView:
-            ci.distortion_model = ""; break;
-        default:
-            ci.distortion_model = ""; break;
-    }
-
-    int n = 0;
-    switch (cam_intr.distortion_model) {
-        case DistortionModel::RadialTangential: n = 5; break;
-        case DistortionModel::Equidistant:      n = 4; break;
-        case DistortionModel::FieldOfView:      n = 1; break;
-        default: break;
-    }
-    ci.d.assign(cam_intr.distortion_coeffs.begin(),
-                cam_intr.distortion_coeffs.begin() + n);
-
-    ci.k = {cam_intr.fx, 0.0,         cam_intr.cx,
-             0.0,         cam_intr.fy, cam_intr.cy,
-             0.0,         0.0,         1.0};
-
-    ci.r = {1.0, 0.0, 0.0,
-             0.0, 1.0, 0.0,
-             0.0, 0.0, 1.0};
-
-    ci.p = {cam_intr.fx, 0.0,         cam_intr.cx, 0.0,
-             0.0,         cam_intr.fy, cam_intr.cy, 0.0,
-             0.0,         0.0,         1.0,         0.0};
-
-    ci.valid = true;
     return ci;
 }
 
