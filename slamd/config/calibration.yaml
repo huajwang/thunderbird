@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Default Calibration — Identity Extrinsic + Typical IMU Noise
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This file ships with the SDK as a safe starting point.  Replace it with
+# your own calibration produced by `import_kalibr_demo` or manual tuning.
+#
+# To calibrate your rig, run Kalibr and import the results:
+#   ./import_kalibr_demo --camchain <camchain.yaml> [--imu <imu.yaml>] -o <calibration.yaml>
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+# LiDAR → IMU extrinsic (identity = sensors co-located / uncalibrated)
+imu_T_lidar:
+  rotation: [1.0, 0.0, 0.0, 0.0]       # quaternion [w, x, y, z]
+  translation: [0.0, 0.0, 0.0]          # metres [x, y, z]
+
+refine_imu_T_lidar: false
+
+# IMU noise parameters (conservative defaults)
+imu_noise:
+  gyro_noise:    1.0e-3    # rad/s/√Hz   — gyroscope white noise
+  accel_noise:   1.0e-2    # m/s²/√Hz    — accelerometer white noise
+  gyro_bias_rw:  1.0e-5    # rad/s²/√Hz  — gyroscope bias random walk
+  accel_bias_rw: 1.0e-4    # m/s³/√Hz    — accelerometer bias random walk
+
+# No cameras by default.  Add entries like:
+# cameras:
+#   - label: "cam0"
+#     intrinsics:
+#       fx: 500.0
+#       fy: 500.0
+#       cx: 320.0
+#       cy: 240.0
+#       width: 640
+#       height: 480
+#       distortion_model: "radtan"
+#       distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+#     imu_T_camera:
+#       rotation: [1.0, 0.0, 0.0, 0.0]
+#       translation: [0.0, 0.0, 0.0]
+#     time_offset_ns: 0

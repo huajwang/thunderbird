@@ -17,7 +17,8 @@
 //   • Up to kMaxCameras cameras (compile-time constant, default 4).
 //   • All transforms use the SensorExtrinsic type from types.h.
 //   • IMU noise uses the same spectral density convention as
-//     SlamEngineConfig::ImuNoiseModel (compatible with Kalibr's imu.yaml).
+//     Kalibr's imu.yaml. The SLAM engine uses this type directly
+//     via CalibrationBundle.
 //   • Thread safety: immutable after load; copy for mutation.
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,7 +36,7 @@
 namespace thunderbird {
 THUNDERBIRD_ABI_NAMESPACE_BEGIN
 
-// ─── IMU noise model (matches SlamEngineConfig::ImuNoiseModel) ──────────────
+// ─── IMU noise model ──────────────────────────────────────────────────────────────
 
 /// Continuous-time spectral densities for IMU error modelling.
 /// Used by SLAM (ESIKF Q-matrix) and calibration tools (Kalibr).

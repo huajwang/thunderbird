@@ -327,11 +327,28 @@ int main(int argc, char* argv[]) {
                 val.pop_back();
 
             // Map known keys to config fields.
-            if (key == "gyro_noise")      config.imu_noise.gyro_noise     = std::stod(val);
-            else if (key == "accel_noise")config.imu_noise.accel_noise    = std::stod(val);
-            else if (key == "gyro_bias_rw")  config.imu_noise.gyro_bias_rw  = std::stod(val);
-            else if (key == "accel_bias_rw") config.imu_noise.accel_bias_rw = std::stod(val);
-            else if (key == "refine_online") config.extrinsic.refine_online = (val == "true");
+            if (key == "calibration_file") {
+                // Load CalibrationBundle from the referenced file.
+                // Strip optional surrounding single/double quotes from the value.
+                if (val.size() >= 2 && (val.front() == '"' || val.front() == '\'')
+                    && val.front() == val.back()) {
+                    val = val.substr(1, val.size() - 2);
+                }
+                auto cfg_dir = fs::path(args.config_file).parent_path();
+                auto calib_path = fs::path(val);
+                if (calib_path.is_relative())
+                    calib_path = cfg_dir / calib_path;
+                if (!config.calibration.load_yaml(calib_path.string())) {
+                    std::fprintf(stderr, "[slam_eval] failed to load calibration: %s\n",
+                                 calib_path.string().c_str());
+                    return 1;
+                }
+            }
+            else if (key == "gyro_noise")      config.calibration.imu_noise.gyro_noise     = std::stod(val);
+            else if (key == "accel_noise") config.calibration.imu_noise.accel_noise    = std::stod(val);
+            else if (key == "gyro_bias_rw")  config.calibration.imu_noise.gyro_bias_rw  = std::stod(val);
+            else if (key == "accel_bias_rw") config.calibration.imu_noise.accel_bias_rw = std::stod(val);
+            else if (key == "refine_online") config.calibration.refine_imu_T_lidar = (val == "true");
             else if (key == "max_iterations")    config.esikf.max_iterations     = std::stoi(val);
             else if (key == "convergence_eps")   config.esikf.convergence_eps    = std::stod(val);
             else if (key == "plane_noise_sigma") config.esikf.plane_noise_sigma  = std::stod(val);

@@ -4,6 +4,8 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp      REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs    REQUIRED)
+find_package(tf2_ros     REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 # ── Ros2Bridge shared library ───────────────────────────────────────────────
 #
@@ -26,7 +28,7 @@ target_link_libraries(thunderbird_ros2_bridge_lib
 )
 
 ament_target_dependencies(thunderbird_ros2_bridge_lib
-    PUBLIC rclcpp sensor_msgs std_msgs
+    PUBLIC rclcpp sensor_msgs std_msgs tf2_ros geometry_msgs
 )
 
 # ── Default node executable (callback-driven) ───────────────────────────────

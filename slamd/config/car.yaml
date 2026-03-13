@@ -22,19 +22,12 @@ sensor:
   lidar_rate_hz: 10.0
 
 slam:
-  # ── IMU noise model ───────────────────────────────────────────────────
-  # Automotive-grade IMU (ADIS16470 class)
-  imu_noise:
-    gyro_noise:    8.0e-4    # rad/s/√Hz  — lower noise floor
-    accel_noise:   1.0e-2    # m/s²/√Hz
-    gyro_bias_rw:  1.0e-5    # rad/s²/√Hz
-    accel_bias_rw: 1.0e-4    # m/s³/√Hz
-
-  # ── LiDAR ↔ IMU extrinsic (VLP-64 on roof rack) ──────────────────────
-  extrinsic:
-    rotation:    [1.0, 0.0, 0.0, 0.0]
-    translation: [0.0, 0.0, 0.28]        # 28 cm above IMU (roof mount)
-    refine_online: false
+  # ── Calibration file (IMU noise, LiDAR↔IMU extrinsic, cameras) ─────
+  # Path to a calibration.yaml produced by Kalibr import or manual creation.
+  # For this vehicle: ADIS16470 IMU + VLP-64 roof-mounted LiDAR.
+  # The default calibration.yaml ships with identity extrinsic and generic
+  # noise values.  Replace it with your vehicle-specific calibration.
+  calibration_file: "calibration.yaml"
 
   # ── ESIKF convergence ─────────────────────────────────────────────────
   esikf:
@@ -69,20 +62,3 @@ slam:
 
   publish_propagated_poses: false    # eval only needs corrected poses
 
-# ── Camera calibration (optional — omit section if no camera) ─────────────
-# Populated by `thunderbird-import-kalibr` or manual measurement.
-# cameras:
-#   - label: "cam0"
-#     time_offset_ns: 0
-#     intrinsics:
-#       fx: 1000.0
-#       fy: 1000.0
-#       cx: 640.0
-#       cy: 360.0
-#       width: 1280
-#       height: 720
-#       distortion_model: radtan
-#       distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
-#     imu_T_camera:
-#       rotation:    [1.0, 0.0, 0.0, 0.0]
-#       translation: [0.0, 0.0, 0.0]

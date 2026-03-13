@@ -48,6 +48,7 @@ WORKDIR /src
 # changed to maximise layer cache hits during development.
 COPY CMakeLists.txt .
 COPY sdk/ sdk/
+COPY slamd/include/ slamd/include/
 COPY tests/ tests/
 
 # Detect multi-arch triplet for proper library install paths
