@@ -30,7 +30,47 @@ comprehensive documentation.
 │  │  SimulatedTransport │ USB │ Ethernet│     ┌───────────────────┐ │
 │  └─────────────────────────────────────┘     │   SyncBundle      │ │
 │                                              │ (LiDAR+IMU+Cam)  │ │
+│  ┌──────────────────┐ ┌──────────────────┐   └───────────────────┘ │
+│  │ FrameAssembler   │ │ HealthMonitor    │                         │
+│  │ (packet → frame) │ │ (temp, V, loss)  │   ┌───────────────────┐ │
+│  └──────────────────┘ └──────────────────┘   │ Recorder / Player │ │
+│                                              │ (.tbrec binary)   │ │
 │                                              └───────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Calibration Subsystem                             │
+│                                                                     │
+│  CalibrationBundle ◄── Kalibr YAML import                           │
+│   ├─ SensorExtrinsic  (SE(3): inverse, compose)                    │
+│   ├─ CameraIntrinsics (per camera, up to 4)                        │
+│   └─ ImuNoiseParams   (spectral densities for ESIKF)               │
+│                                                                     │
+│  ┌────────────────┐ ┌─────────────────┐ ┌────────────────────────┐ │
+│  │ RigidTransform │ │ LiDAR-IMU Calib │ │ LiDAR-Camera Calib     │ │
+│  │ Horn SVD +     │ │ BALM voxel,     │ │ edge alignment,        │ │
+│  │ RANSAC         │ │ optional Ceres  │ │ dependency-free         │ │
+│  └────────────────┘ └─────────────────┘ └────────────────────────┘ │
+│  ┌────────────────┐ ┌─────────────────┐                            │
+│  │ Online Refiner │ │ B-Spline IMU    │                            │
+│  │ ground PCA,    │ │ uniform cubic   │                            │
+│  │ SLERP accum.   │ │ interpolation   │                            │
+│  └────────────────┘ └─────────────────┘                            │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │ CalibrationBundle
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    AcmeSlamEngine (PImpl)                            │
+│                                                                     │
+│  feedImu() ──▶ [imu_ring SPSC] ──┐   ┌──────────────────────────┐ │
+│  feedCloud()─▶ [cloud_ring SPSC]─┤   │     Worker Thread        │ │
+│                                  └──▶│  SlamTimeSync → deskew   │ │
+│                                      │  → ESIKF update          │ │
+│                                      │  → ikd-Tree insert       │ │
+│                                      └───────────┬──────────────┘ │
+│                                                   │                │
+│  getLatestPose()◄── [pose_ring SPSC] ◄────────────┤                │
+│  getLatestOutput()◄─[output_ring SPSC]◄───────────┘                │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,6 +84,8 @@ comprehensive documentation.
 | **Nearest-neighbour sync** | Simple, deterministic, configurable tolerance — all three sync engines share a unified `ClockService` for drift-compensated timestamps |
 | **PImpl in `DeviceManager`** | Stable ABI; hides internal headers from consumers |
 | **Dependency-free calibration** | Rigid-transform, LiDAR-camera, and online refiner need no external libraries; LiDAR-IMU uses optional Ceres |
+| **`CalibrationBundle` composition** | Single struct aggregates extrinsics, intrinsics, and IMU noise; consumed by SLAM engine, recording, and perception layers |
+| **SLAM engine lock-free pipeline** | 4 SPSC ring buffers decouple sensor ingress from the ESIKF worker thread; no mutex on the hot path |
 
 ---
 
