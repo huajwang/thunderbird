@@ -1052,11 +1052,17 @@ bool loadConfig(const std::string& path, DaemonConfig& config,
         std::string val = trimmed.substr(kCalibKeyLen);
         // Trim whitespace and quotes.
         size_t vs = val.find_first_not_of(" \t\"'");
-        if (vs == std::string::npos) continue;
+        if (vs == std::string::npos) {
+            error = "calibration_file key present but value is empty/whitespace";
+            return false;
+        }
         val = val.substr(vs);
         size_t ve = val.find_last_not_of(" \t\r\n\"'");
         if (ve != std::string::npos) val = val.substr(0, ve + 1);
-        if (val.empty()) continue;
+        if (val.empty()) {
+            error = "calibration_file key present but value is empty";
+            return false;
+        }
 
         // Resolve relative path against config file directory.
         std::error_code ec;
