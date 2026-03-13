@@ -1041,9 +1041,15 @@ bool loadConfig(const std::string& path, DaemonConfig& config,
     while (std::getline(fs, line)) {
         auto hash = line.find('#');
         if (hash != std::string::npos) line.erase(hash);
-        auto pos = line.find("calibration_file:");
-        if (pos == std::string::npos) continue;
-        std::string val = line.substr(pos + 17);
+        // Trim leading whitespace and require key at the start of the line.
+        size_t first_non_ws = line.find_first_not_of(" \t");
+        if (first_non_ws == std::string::npos) continue;
+        std::string trimmed = line.substr(first_non_ws);
+        constexpr const char* kCalibKey = "calibration_file:";
+        constexpr size_t kCalibKeyLen = 17;
+        if (trimmed.size() < kCalibKeyLen ||
+            trimmed.compare(0, kCalibKeyLen, kCalibKey) != 0) continue;
+        std::string val = trimmed.substr(kCalibKeyLen);
         // Trim whitespace and quotes.
         size_t vs = val.find_first_not_of(" \t\"'");
         if (vs == std::string::npos) continue;
@@ -1070,7 +1076,7 @@ bool loadConfig(const std::string& path, DaemonConfig& config,
         break;
     }
 
-    (void)error;
+    error.clear();
     return true;
 #endif
 }

@@ -270,11 +270,12 @@ void Ros2Bridge::publishStaticTransforms() {
 
     std::vector<geometry_msgs::msg::TransformStamped> transforms;
 
-    auto make_tf = [](const std::string& parent, const std::string& child,
-                      const SensorExtrinsic& ext) {
+    auto stamp = node_->get_clock()->now();
+
+    auto make_tf = [&stamp](const std::string& parent, const std::string& child,
+                            const SensorExtrinsic& ext) {
         geometry_msgs::msg::TransformStamped tf;
-        tf.header.stamp.sec = 0;
-        tf.header.stamp.nanosec = 0;
+        tf.header.stamp = stamp;
         tf.header.frame_id = parent;
         tf.child_frame_id  = child;
         tf.transform.rotation.w = ext.rotation[0];
