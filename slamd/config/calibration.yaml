@@ -34,8 +34,8 @@ imu_noise:
 #       cy: 240.0
 #       width: 640
 #       height: 480
-#       distortion_model: "radial-tangential"
-#       distortion_coeffs: [0.0, 0.0, 0.0, 0.0]
+#       distortion_model: "radial_tangential"
+#       distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
 #     imu_T_camera:
 #       rotation: [1.0, 0.0, 0.0, 0.0]
 #       translation: [0.0, 0.0, 0.0]
