@@ -140,33 +140,13 @@
 #include <memory>
 #include <string>
 
+#include "thunderbird/calibration.h"
+
 namespace thunderbird::odom {
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  SlamEngineConfig — all tunable parameters for the SLAM pipeline
 // ═════════════════════════════════════════════════════════════════════════════
-
-/// IMU noise model (continuous-time spectral densities).
-/// Used for ESIKF process noise Q-matrix construction.
-struct ImuNoiseModel {
-    double gyro_noise      = 1.0e-3;   ///< rad/s/√Hz   gyroscope white noise
-    double accel_noise     = 1.0e-2;   ///< m/s²/√Hz    accelerometer white noise
-    double gyro_bias_rw    = 1.0e-5;   ///< rad/s²/√Hz  gyroscope bias random walk
-    double accel_bias_rw   = 1.0e-4;   ///< m/s³/√Hz    accelerometer bias random walk
-};
-
-/// LiDAR ↔ IMU rigid-body extrinsic calibration.
-/// Transforms a point from LiDAR frame to IMU frame: p_imu = R * p_lidar + t
-struct ExtrinsicCalibration {
-    /// Rotation from LiDAR to IMU frame (Hamilton quaternion [w,x,y,z]).
-    double rotation[4]    = {1.0, 0.0, 0.0, 0.0};
-
-    /// Translation from LiDAR to IMU frame (metres).
-    double translation[3] = {0.0, 0.0, 0.0};
-
-    /// If true, the ESIKF will refine the extrinsic online.
-    bool   refine_online  = false;
-};
 
 /// ikd-Tree and local map parameters.
 struct MapConfig {
@@ -201,9 +181,8 @@ struct InitConfig {
 
 /// Master configuration.
 struct SlamEngineConfig {
-    // ── Sensor model ────────────────────────────────────────────────────
-    ImuNoiseModel          imu_noise;
-    ExtrinsicCalibration   extrinsic;
+    // ── Calibration (IMU noise, LiDAR↔IMU extrinsic, cameras) ─────────
+    CalibrationBundle      calibration;
 
     // ── Estimator ───────────────────────────────────────────────────────
     EsikfConfig            esikf;

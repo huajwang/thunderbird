@@ -78,8 +78,8 @@ struct EsikfEngine {
     double last_residual{0};
     uint32_t last_correspondences{0};
 
-    void set_noise_model(const ImuNoiseModel& /*noise*/) { /* TODO */ }
-    void set_extrinsic(const ExtrinsicCalibration& /*ext*/) { /* TODO */ }
+    void set_noise_model(const ImuNoiseParams& /*noise*/) { /* TODO */ }
+    void set_extrinsic(const SensorExtrinsic& /*ext*/) { /* TODO */ }
     void set_params(const EsikfConfig& /*cfg*/) { /* TODO */ }
 
     void propagate(const ImuSample& /*sample*/, double /*dt*/) {
@@ -579,8 +579,8 @@ bool AcmeSlamEngine::initialize(const SlamEngineConfig& config) {
     impl_->time_sync = std::make_unique<SlamTimeSync>(tsc);
 
     // ── Configure ESIKF ─────────────────────────────────────────────────
-    impl_->esikf.set_noise_model(config.imu_noise);
-    impl_->esikf.set_extrinsic(config.extrinsic);
+    impl_->esikf.set_noise_model(config.calibration.imu_noise);
+    impl_->esikf.set_extrinsic(config.calibration.imu_T_lidar);
     impl_->esikf.set_params(config.esikf);
 
     // ── Reset state ─────────────────────────────────────────────────────

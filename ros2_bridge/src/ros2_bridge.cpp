@@ -43,7 +43,9 @@ Ros2Bridge::Ros2Bridge(rclcpp::Node::SharedPtr node,
     }
 
     // ── Create CameraInfo publisher ────────────────────────────────────
-    if (config_.publish_camera_info && config_.camera_intrinsics.valid()) {
+    if (config_.publish_camera_info &&
+        !config_.calibration.cameras.empty() &&
+        config_.calibration.cameras[0].intrinsics.valid()) {
         // CameraInfo uses RELIABLE QoS (small, ~10 Hz, latched/transient-local)
         camera_info_pub_ = node_->create_publisher<sensor_msgs::msg::CameraInfo>(
             config_.camera_info_topic, rclcpp::QoS(10).transient_local());
@@ -104,6 +106,9 @@ void Ros2Bridge::start() {
         device_.on_synced_frame(
             [this](const data::SyncedFrame& sf) { onSyncedFrame(sf); });
     }
+
+    // ── Publish static TF transforms from CalibrationBundle ───────────
+    publishStaticTransforms();
 
     RCLCPP_INFO(node_->get_logger(), "Ros2Bridge: started (callback mode)");
 }
@@ -204,14 +209,15 @@ void Ros2Bridge::onCamera(const data::ImageFrame& f) {
     camera_count_.fetch_add(1, std::memory_order_relaxed);
 
     // Publish CameraInfo alongside each image
-    if (camera_info_pub_) {
+    if (camera_info_pub_ && !config_.calibration.cameras.empty()) {
+        const auto& cam_intr = config_.calibration.cameras[0].intrinsics;
         sensor_msgs::msg::CameraInfo ci;
         ci.header = msg.header;
-        ci.width  = config_.camera_intrinsics.width;
-        ci.height = config_.camera_intrinsics.height;
+        ci.width  = cam_intr.width;
+        ci.height = cam_intr.height;
 
         // Distortion model name
-        switch (config_.camera_intrinsics.distortion_model) {
+        switch (cam_intr.distortion_model) {
             case thunderbird::DistortionModel::RadialTangential:
                 ci.distortion_model = "plumb_bob"; break;
             case thunderbird::DistortionModel::Equidistant:
@@ -224,20 +230,19 @@ void Ros2Bridge::onCamera(const data::ImageFrame& f) {
 
         // Distortion coefficients
         int n = 0;
-        switch (config_.camera_intrinsics.distortion_model) {
+        switch (cam_intr.distortion_model) {
             case thunderbird::DistortionModel::RadialTangential: n = 5; break;
             case thunderbird::DistortionModel::Equidistant:      n = 4; break;
             case thunderbird::DistortionModel::FieldOfView:      n = 1; break;
             default: break;
         }
-        ci.d.assign(config_.camera_intrinsics.distortion_coeffs.begin(),
-                     config_.camera_intrinsics.distortion_coeffs.begin() + n);
+        ci.d.assign(cam_intr.distortion_coeffs.begin(),
+                     cam_intr.distortion_coeffs.begin() + n);
 
         // Camera matrix K (3×3, row-major)
-        const auto& intr = config_.camera_intrinsics;
-        ci.k = {intr.fx, 0.0,     intr.cx,
-                 0.0,     intr.fy, intr.cy,
-                 0.0,     0.0,     1.0};
+        ci.k = {cam_intr.fx, 0.0,         cam_intr.cx,
+                 0.0,         cam_intr.fy, cam_intr.cy,
+                 0.0,         0.0,         1.0};
 
         // Rectification matrix (identity for monocular)
         ci.r = {1.0, 0.0, 0.0,
@@ -245,11 +250,65 @@ void Ros2Bridge::onCamera(const data::ImageFrame& f) {
                  0.0, 0.0, 1.0};
 
         // Projection matrix P (3×4)
-        ci.p = {intr.fx, 0.0,     intr.cx, 0.0,
-                 0.0,     intr.fy, intr.cy, 0.0,
-                 0.0,     0.0,     1.0,     0.0};
+        ci.p = {cam_intr.fx, 0.0,         cam_intr.cx, 0.0,
+                 0.0,         cam_intr.fy, cam_intr.cy, 0.0,
+                 0.0,         0.0,         1.0,         0.0};
 
         camera_info_pub_->publish(ci);
+    }
+}
+
+void Ros2Bridge::publishStaticTransforms() {
+    const auto& calib = config_.calibration;
+    // Skip if calibration has only identity transforms and no cameras
+    if (calib.imu_T_lidar.is_identity() && calib.cameras.empty()) return;
+
+    if (!static_tf_broadcaster_) {
+        static_tf_broadcaster_ =
+            std::make_shared<tf2_ros::StaticTransformBroadcaster>(node_);
+    }
+
+    std::vector<geometry_msgs::msg::TransformStamped> transforms;
+
+    auto make_tf = [](const std::string& parent, const std::string& child,
+                      const SensorExtrinsic& ext) {
+        geometry_msgs::msg::TransformStamped tf;
+        tf.header.stamp.sec = 0;
+        tf.header.stamp.nanosec = 0;
+        tf.header.frame_id = parent;
+        tf.child_frame_id  = child;
+        tf.transform.rotation.w = ext.rotation[0];
+        tf.transform.rotation.x = ext.rotation[1];
+        tf.transform.rotation.y = ext.rotation[2];
+        tf.transform.rotation.z = ext.rotation[3];
+        tf.transform.translation.x = ext.translation[0];
+        tf.transform.translation.y = ext.translation[1];
+        tf.transform.translation.z = ext.translation[2];
+        return tf;
+    };
+
+    // IMU → LiDAR
+    if (!calib.imu_T_lidar.is_identity()) {
+        transforms.push_back(
+            make_tf(config_.imu_frame_id, config_.lidar_frame_id,
+                    calib.imu_T_lidar));
+    }
+
+    // IMU → CameraN
+    for (size_t i = 0; i < calib.cameras.size(); ++i) {
+        std::string cam_frame = (i == 0)
+            ? config_.camera_frame_id
+            : config_.camera_frame_id + "_" + std::to_string(i);
+        transforms.push_back(
+            make_tf(config_.imu_frame_id, cam_frame,
+                    calib.cameras[i].imu_T_camera));
+    }
+
+    if (!transforms.empty()) {
+        static_tf_broadcaster_->sendTransform(transforms);
+        RCLCPP_INFO(node_->get_logger(),
+                    "Ros2Bridge: published %zu static TF transform(s)",
+                    transforms.size());
     }
 }
 

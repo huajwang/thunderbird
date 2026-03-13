@@ -102,6 +102,8 @@ static void test_calibration_yaml_roundtrip() {
 
     bundle.imu_noise.gyro_noise = 1.5e-3;
     bundle.imu_noise.accel_noise = 2.0e-2;
+    bundle.imu_noise.gyro_bias_rw = 7.7e-6;
+    bundle.imu_noise.accel_bias_rw = 3.3e-4;
 
     // Save
     const auto unique_id = std::to_string(
@@ -131,6 +133,8 @@ static void test_calibration_yaml_roundtrip() {
 
     assert(near(loaded.imu_noise.gyro_noise, 1.5e-3, 1e-8));
     assert(near(loaded.imu_noise.accel_noise, 2.0e-2, 1e-8));
+    assert(near(loaded.imu_noise.gyro_bias_rw, 7.7e-6, 1e-10));
+    assert(near(loaded.imu_noise.accel_bias_rw, 3.3e-4, 1e-8));
 
     // Cleanup
     std::filesystem::remove(path);
@@ -216,6 +220,44 @@ static void test_load_yaml_mismatched_quotes() {
     std::puts("  load_yaml mismatched quotes    OK");
 }
 
+// ── ImuNoiseParams: all four fields roundtrip ───────────────────────────────
+
+static void test_imu_noise_params_defaults() {
+    ImuNoiseParams p;
+    assert(near(p.gyro_noise, 1.0e-3));
+    assert(near(p.accel_noise, 1.0e-2));
+    assert(near(p.gyro_bias_rw, 1.0e-5));
+    assert(near(p.accel_bias_rw, 1.0e-4));
+    std::puts("  ImuNoiseParams defaults            OK");
+}
+
+static void test_imu_noise_params_yaml_roundtrip() {
+    CalibrationBundle bundle;
+    bundle.imu_noise.gyro_noise    = 9.1e-4;
+    bundle.imu_noise.accel_noise   = 4.2e-2;
+    bundle.imu_noise.gyro_bias_rw  = 6.3e-6;
+    bundle.imu_noise.accel_bias_rw = 8.8e-5;
+
+    const auto unique_id = std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("test_noise_rt_" + unique_id + ".yaml");
+    bool ok = bundle.save_yaml(path.string());
+    assert(ok);
+
+    CalibrationBundle loaded;
+    ok = loaded.load_yaml(path.string());
+    assert(ok);
+
+    assert(near(loaded.imu_noise.gyro_noise, 9.1e-4, 1e-8));
+    assert(near(loaded.imu_noise.accel_noise, 4.2e-2, 1e-8));
+    assert(near(loaded.imu_noise.gyro_bias_rw, 6.3e-6, 1e-10));
+    assert(near(loaded.imu_noise.accel_bias_rw, 8.8e-5, 1e-9));
+
+    std::filesystem::remove(path);
+    std::puts("  ImuNoiseParams YAML roundtrip      OK");
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -228,6 +270,8 @@ int main() {
     test_calibration_derived_transforms();
     test_load_yaml_refine_only();
     test_load_yaml_mismatched_quotes();
+    test_imu_noise_params_defaults();
+    test_imu_noise_params_yaml_roundtrip();
     std::puts("CalibrationTypes: ALL TESTS PASSED");
     return 0;
 }

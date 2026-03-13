@@ -58,6 +58,8 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <tf2_ros/static_transform_broadcaster.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 // SDK headers
 #include "thunderbird/device_manager.h"
@@ -97,9 +99,9 @@ struct Ros2BridgeConfig {
     bool publish_synced     = true;
     bool publish_camera_info = true;
 
-    /// Camera intrinsics to publish on camera_info topic.
-    /// Leave default (invalid) to skip CameraInfo publishing.
-    CameraIntrinsics camera_intrinsics;
+    /// Calibration bundle with camera intrinsics/extrinsics and sensor transforms.
+    /// If cameras vector is non-empty, CameraInfo is published from cameras[0].
+    CalibrationBundle calibration;
 
     // ── QoS ─────────────────────────────────────────────────────────────
     /// Queue depth for all sensor publishers.  Uses BEST_EFFORT +
@@ -196,6 +198,7 @@ private:
     void onImu(const data::ImuFrame& f);
     void onCamera(const data::ImageFrame& f);
     void onSyncedFrame(const data::SyncedFrame& sf);
+    void publishStaticTransforms();
 
     // ── State ───────────────────────────────────────────────────────────
 
@@ -211,6 +214,9 @@ private:
 
     // CameraInfo publisher (populated from CalibrationBundle)
     rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr  camera_info_pub_;
+
+    // Static TF broadcaster for sensor extrinsics
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
 
     // Synced-frame publishers
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr sync_lidar_pub_;

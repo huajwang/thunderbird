@@ -22,19 +22,10 @@ sensor:
   lidar_rate_hz: 10.0
 
 slam:
-  # ── IMU noise model ───────────────────────────────────────────────────
-  # Typical MEMS (BMI088 class)
-  imu_noise:
-    gyro_noise:    1.6e-3    # rad/s/√Hz  — datasheet: 0.014 dps/√Hz
-    accel_noise:   2.0e-2    # m/s²/√Hz   — datasheet: 175 µg/√Hz
-    gyro_bias_rw:  2.0e-5    # rad/s²/√Hz
-    accel_bias_rw: 3.0e-4    # m/s³/√Hz
-
-  # ── LiDAR ↔ IMU extrinsic (Livox Mid-360 on drone frame) ─────────────
-  extrinsic:
-    rotation:    [1.0, 0.0, 0.0, 0.0]
-    translation: [0.04, 0.0, -0.03]       # 4 cm forward, 3 cm below IMU
-    refine_online: false
+  # ── Calibration file (IMU noise, LiDAR↔IMU extrinsic, cameras) ─────
+  # Path to calibration.yaml produced by Kalibr import or manual creation.
+  # For this platform: BMI088 IMU + Livox Mid-360.
+  calibration_file: "calibration.yaml"
 
   # ── ESIKF convergence ─────────────────────────────────────────────────
   esikf:
@@ -69,20 +60,3 @@ slam:
 
   publish_propagated_poses: false    # eval only needs corrected poses
 
-# ── Camera calibration (optional — omit section if no camera) ─────────────
-# Populated by `thunderbird-import-kalibr` or manual measurement.
-# cameras:
-#   - label: "cam0"
-#     time_offset_ns: 0
-#     intrinsics:
-#       fx: 600.0
-#       fy: 600.0
-#       cx: 320.0
-#       cy: 240.0
-#       width: 640
-#       height: 480
-#       distortion_model: radtan
-#       distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
-#     imu_T_camera:
-#       rotation:    [1.0, 0.0, 0.0, 0.0]
-#       translation: [0.0, 0.0, 0.0]

@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -1033,6 +1034,42 @@ bool loadConfig(const std::string& path, DaemonConfig& config,
     // Apply defaults (already set in DaemonConfig constructors).
     config = DaemonConfig{};
     config.sensor.device_uri = "";  // simulated mode
+
+    // Parse calibration_file key and load CalibrationBundle.
+    // Minimal line-by-line scan for "calibration_file:" key.
+    std::string line;
+    while (std::getline(fs, line)) {
+        auto hash = line.find('#');
+        if (hash != std::string::npos) line.erase(hash);
+        auto pos = line.find("calibration_file:");
+        if (pos == std::string::npos) continue;
+        std::string val = line.substr(pos + 17);
+        // Trim whitespace and quotes.
+        size_t vs = val.find_first_not_of(" \t\"'");
+        if (vs == std::string::npos) continue;
+        val = val.substr(vs);
+        size_t ve = val.find_last_not_of(" \t\r\n\"'");
+        if (ve != std::string::npos) val = val.substr(0, ve + 1);
+        if (val.empty()) continue;
+
+        // Resolve relative path against config file directory.
+        std::error_code ec;
+        auto config_dir = std::filesystem::path(path).parent_path();
+        auto calib_path = std::filesystem::path(val);
+        if (calib_path.is_relative())
+            calib_path = config_dir / calib_path;
+        auto canonical = std::filesystem::canonical(calib_path, ec);
+        if (ec || !std::filesystem::is_regular_file(canonical, ec)) {
+            error = "Calibration file not found: " + calib_path.string();
+            return false;
+        }
+        if (!config.slam.calibration.load_yaml(canonical.string())) {
+            error = "Failed to parse calibration file: " + canonical.string();
+            return false;
+        }
+        break;
+    }
+
     (void)error;
     return true;
 #endif

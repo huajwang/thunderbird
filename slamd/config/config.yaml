@@ -26,21 +26,10 @@ sensor:
 #  SLAM engine (forwarded to AcmeSlamEngine / SlamEngineConfig)
 # ═══════════════════════════════════════════════════════════════════════════
 slam:
-  # ── IMU noise model (continuous-time spectral densities) ───────────────
-  imu_noise:
-    gyro_noise:    1.0e-3    # rad/s/√Hz
-    accel_noise:   1.0e-2    # m/s²/√Hz
-    gyro_bias_rw:  1.0e-5    # rad/s²/√Hz
-    accel_bias_rw: 1.0e-4    # m/s³/√Hz
-
-  # ── LiDAR ↔ IMU extrinsic calibration ─────────────────────────────────
-  extrinsic:
-    # Rotation from LiDAR to IMU frame [w, x, y, z]
-    rotation:    [1.0, 0.0, 0.0, 0.0]
-    # Translation from LiDAR to IMU frame [x, y, z] (metres)
-    translation: [0.0, 0.0, 0.0]
-    # Refine online (the ESIKF will adjust the extrinsic)
-    refine_online: false
+  # ── Calibration file (IMU noise, LiDAR↔IMU extrinsic, cameras) ─────
+  # Path to calibration.yaml produced by Kalibr import or manual creation.
+  # Contains imu_noise, imu_T_lidar, cameras, and refine_imu_T_lidar.
+  calibration_file: "calibration.yaml"
 
   # ── ESIKF convergence ─────────────────────────────────────────────────
   esikf:
