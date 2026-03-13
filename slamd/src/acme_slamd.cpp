@@ -2,6 +2,7 @@
 // Thunderbird SDK — acme_slamd: SLAM Daemon Implementation
 // ─────────────────────────────────────────────────────────────────────────────
 #include "acme_slamd.h"
+#include "calibration_file_parser.h"
 #include "thunderbird/lidar_frame_assembler.h"
 
 #include <algorithm>
@@ -1034,56 +1035,10 @@ bool loadConfig(const std::string& path, DaemonConfig& config,
     // Apply defaults (already set in DaemonConfig constructors).
     config = DaemonConfig{};
     config.sensor.device_uri = "";  // simulated mode
+    fs.close();
 
-    // Parse calibration_file key and load CalibrationBundle.
-    // Minimal line-by-line scan for "calibration_file:" key.
-    std::string line;
-    while (std::getline(fs, line)) {
-        auto hash = line.find('#');
-        if (hash != std::string::npos) line.erase(hash);
-        // Trim leading whitespace and require key at the start of the line.
-        size_t first_non_ws = line.find_first_not_of(" \t");
-        if (first_non_ws == std::string::npos) continue;
-        std::string trimmed = line.substr(first_non_ws);
-        constexpr const char* kCalibKey = "calibration_file:";
-        constexpr size_t kCalibKeyLen = 17;
-        if (trimmed.size() < kCalibKeyLen ||
-            trimmed.compare(0, kCalibKeyLen, kCalibKey) != 0) continue;
-        std::string val = trimmed.substr(kCalibKeyLen);
-        // Trim whitespace and quotes.
-        size_t vs = val.find_first_not_of(" \t\"'");
-        if (vs == std::string::npos) {
-            error = "calibration_file key present but value is empty/whitespace";
-            return false;
-        }
-        val = val.substr(vs);
-        size_t ve = val.find_last_not_of(" \t\r\n\"'");
-        if (ve != std::string::npos) val = val.substr(0, ve + 1);
-        if (val.empty()) {
-            error = "calibration_file key present but value is empty";
-            return false;
-        }
-
-        // Resolve relative path against config file directory.
-        std::error_code ec;
-        auto config_dir = std::filesystem::path(path).parent_path();
-        auto calib_path = std::filesystem::path(val);
-        if (calib_path.is_relative())
-            calib_path = config_dir / calib_path;
-        auto canonical = std::filesystem::canonical(calib_path, ec);
-        if (ec || !std::filesystem::is_regular_file(canonical, ec)) {
-            error = "Calibration file not found: " + calib_path.string();
-            return false;
-        }
-        if (!config.slam.calibration.load_yaml(canonical.string())) {
-            error = "Failed to parse calibration file: " + canonical.string();
-            return false;
-        }
-        break;
-    }
-
-    error.clear();
-    return true;
+    // Parse calibration_file key and load CalibrationBundle via shared helper.
+    return parseCalibrationFile(path, config.slam.calibration, error);
 #endif
 }
 

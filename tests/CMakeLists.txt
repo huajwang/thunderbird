@@ -126,6 +126,8 @@ add_test(NAME SlamCalibration COMMAND test_slam_calibration)
 
 add_executable(test_slamd_load_config test_slamd_load_config.cpp)
 target_link_libraries(test_slamd_load_config PRIVATE thunderbird_sdk)
+target_include_directories(test_slamd_load_config PRIVATE
+    ${CMAKE_SOURCE_DIR}/slamd/include)
 add_test(NAME SlamdLoadConfig COMMAND test_slamd_load_config)
 
 # ── Ros2BridgeConfig CalibrationBundle integration ─────────────────────────

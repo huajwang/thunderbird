@@ -1,15 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Test — slamd::loadConfig calibration_file parsing
+// Test — slamd::parseCalibrationFile
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Validates that the calibration_file parsing logic from loadConfig()
-// correctly loads CalibrationBundle from a config YAML.
-//
-// This test reimplements the calibration_file parsing logic found in
-// slamd/src/acme_slamd.cpp::loadConfig() to test it independently
-// without linking the full slamd daemon implementation.
+// Validates that parseCalibrationFile() (shared helper in
+// slamd/include/calibration_file_parser.h) correctly parses the
+// calibration_file key and loads CalibrationBundle from a config YAML.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+#include "calibration_file_parser.h"
 #include "thunderbird/calibration.h"
 #include "thunderbird/odom/slam_engine.h"
 
@@ -23,6 +21,7 @@
 
 using namespace thunderbird;
 using namespace thunderbird::odom;
+using thunderbird::slamd::parseCalibrationFile;
 
 static constexpr double kEps = 1e-9;
 
@@ -39,65 +38,12 @@ static std::filesystem::path makeTempDir(const std::string& prefix) {
     return dir;
 }
 
-// ── Standalone calibration_file parser ──────────────────────────────────────
-// This mirrors the logic from slamd/src/acme_slamd.cpp::loadConfig()
-// for the calibration_file key parsing.
+// Tests use the shared parseCalibrationFile() from calibration_file_parser.h.
+// Wrap CalibrationBundle in a struct for convenient test access.
 
 struct SlamdTestConfig {
     SlamEngineConfig slam;
 };
-
-static bool parseCalibrationFile(const std::string& config_path,
-                                  SlamdTestConfig& config,
-                                  std::string& error) {
-    std::ifstream fs(config_path);
-    if (!fs.is_open()) {
-        error = "Cannot open config file: " + config_path;
-        return false;
-    }
-
-    std::string line;
-    while (std::getline(fs, line)) {
-        auto hash = line.find('#');
-        if (hash != std::string::npos) line.erase(hash);
-        // Trim leading whitespace and require key at the start of the line.
-        size_t first_non_ws = line.find_first_not_of(" \t");
-        if (first_non_ws == std::string::npos) continue;
-        std::string trimmed = line.substr(first_non_ws);
-        constexpr const char* kCalibKey = "calibration_file:";
-        constexpr size_t kCalibKeyLen = 17;
-        if (trimmed.size() < kCalibKeyLen ||
-            trimmed.compare(0, kCalibKeyLen, kCalibKey) != 0) continue;
-        std::string val = trimmed.substr(kCalibKeyLen);
-        // Trim whitespace and quotes.
-        size_t vs = val.find_first_not_of(" \t\"'");
-        if (vs == std::string::npos) continue;
-        val = val.substr(vs);
-        size_t ve = val.find_last_not_of(" \t\r\n\"'");
-        if (ve != std::string::npos) val = val.substr(0, ve + 1);
-        if (val.empty()) continue;
-
-        // Resolve relative path against config file directory.
-        std::error_code ec;
-        auto config_dir = std::filesystem::path(config_path).parent_path();
-        auto calib_path = std::filesystem::path(val);
-        if (calib_path.is_relative())
-            calib_path = config_dir / calib_path;
-        auto canonical = std::filesystem::canonical(calib_path, ec);
-        if (ec || !std::filesystem::is_regular_file(canonical, ec)) {
-            error = "Calibration file not found: " + calib_path.string();
-            return false;
-        }
-        if (!config.slam.calibration.load_yaml(canonical.string())) {
-            error = "Failed to parse calibration file: " + canonical.string();
-            return false;
-        }
-        break;
-    }
-
-    error.clear();
-    return true;
-}
 
 // ── Test: loadConfig with valid calibration_file ────────────────────────────
 
@@ -130,7 +76,7 @@ static void test_load_config_with_calibration_file() {
 
     SlamdTestConfig config;
     std::string error;
-    bool ok = parseCalibrationFile(config_path.string(), config, error);
+    bool ok = parseCalibrationFile(config_path.string(), config.slam.calibration, error);
     assert(ok);
 
     // Verify the CalibrationBundle was loaded into config.slam.calibration
@@ -160,7 +106,7 @@ static void test_load_config_missing_calibration_file() {
 
     SlamdTestConfig config;
     std::string error;
-    bool ok = parseCalibrationFile(config_path.string(), config, error);
+    bool ok = parseCalibrationFile(config_path.string(), config.slam.calibration, error);
     assert(!ok);
     assert(!error.empty());
 
@@ -183,7 +129,7 @@ static void test_load_config_no_calibration_key() {
 
     SlamdTestConfig config;
     std::string error;
-    bool ok = parseCalibrationFile(config_path.string(), config, error);
+    bool ok = parseCalibrationFile(config_path.string(), config.slam.calibration, error);
     assert(ok);
 
     // Should have default CalibrationBundle (identity extrinsic, default noise)
@@ -199,7 +145,7 @@ static void test_load_config_no_calibration_key() {
 static void test_load_config_nonexistent_file() {
     SlamdTestConfig config;
     std::string error;
-    bool ok = parseCalibrationFile("/nonexistent/path/config.yaml", config, error);
+    bool ok = parseCalibrationFile("/nonexistent/path/config.yaml", config.slam.calibration, error);
     assert(!ok);
     assert(!error.empty());
 
@@ -241,7 +187,7 @@ static void test_load_config_calibration_with_cameras() {
 
     SlamdTestConfig config;
     std::string error;
-    bool ok = parseCalibrationFile(config_path.string(), config, error);
+    bool ok = parseCalibrationFile(config_path.string(), config.slam.calibration, error);
     assert(ok);
 
     // Verify camera was loaded
@@ -271,7 +217,7 @@ static void test_load_config_commented_calibration_file() {
 
     SlamdTestConfig config;
     std::string error;
-    bool ok = parseCalibrationFile(config_path.string(), config, error);
+    bool ok = parseCalibrationFile(config_path.string(), config.slam.calibration, error);
     assert(ok);
 
     // Comment should be stripped — calibration_file key should not be found
@@ -301,7 +247,7 @@ static void test_load_config_quoted_calibration_path() {
 
     SlamdTestConfig config;
     std::string error;
-    bool ok = parseCalibrationFile(config_path.string(), config, error);
+    bool ok = parseCalibrationFile(config_path.string(), config.slam.calibration, error);
     assert(ok);
     assert(near(config.slam.calibration.imu_T_lidar.translation[0], 0.5, 1e-6));
 
