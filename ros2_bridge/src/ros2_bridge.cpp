@@ -26,6 +26,10 @@ Ros2Bridge::Ros2Bridge(rclcpp::Node::SharedPtr node,
     // VOLATILE durability means late-joining subscribers won't receive
     // stale data.  The small depth (default 5) keeps memory bounded.
     auto sensor_qos = rclcpp::SensorDataQoS();
+
+    // Publish static TF transforms eagerly so they are available even if
+    // start() is never called (e.g. pull-mode via publishPending()).
+    publishStaticTransforms();
     sensor_qos.keep_last(config_.qos_depth);
 
     // ── Create raw-sensor publishers ────────────────────────────────────
