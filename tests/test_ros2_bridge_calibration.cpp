@@ -365,7 +365,7 @@ static void test_static_tf_full_config() {
     CameraCalibration cam1;
     cam1.label = "rear";
     cam1.imu_T_camera.translation = {-0.05, 0.03, -0.01};
-    cam1.imu_T_camera.rotation = {0.0, 0.0, 1.0, 0.0};  // 180° yaw
+    cam1.imu_T_camera.rotation = {0.0, 0.0, 0.0, 1.0};  // 180° yaw
 
     config.calibration.cameras.push_back(cam0);
     config.calibration.cameras.push_back(cam1);

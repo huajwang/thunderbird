@@ -329,6 +329,11 @@ int main(int argc, char* argv[]) {
             // Map known keys to config fields.
             if (key == "calibration_file") {
                 // Load CalibrationBundle from the referenced file.
+                // Strip optional surrounding single/double quotes from the value.
+                if (val.size() >= 2 && (val.front() == '"' || val.front() == '\'')
+                    && val.front() == val.back()) {
+                    val = val.substr(1, val.size() - 2);
+                }
                 auto cfg_dir = fs::path(args.config_file).parent_path();
                 auto calib_path = fs::path(val);
                 if (calib_path.is_relative())

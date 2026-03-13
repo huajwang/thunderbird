@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <numbers>
 #include <thread>
 
 using namespace thunderbird;
@@ -67,7 +68,7 @@ static void test_nonidentity_extrinsic_in_config() {
     config.calibration.imu_T_lidar.translation = {0.1, -0.05, 0.03};
     // 45° around Z axis
     config.calibration.imu_T_lidar.rotation = {
-        std::cos(M_PI / 8), 0.0, 0.0, std::sin(M_PI / 8)};
+        std::cos(std::numbers::pi / 8), 0.0, 0.0, std::sin(std::numbers::pi / 8)};
 
     assert(!config.calibration.imu_T_lidar.is_identity());
     assert(near(config.calibration.imu_T_lidar.translation[0], 0.1));
@@ -151,7 +152,7 @@ static void test_engine_init_nonidentity_extrinsic() {
 
     config.calibration.imu_T_lidar.translation = {0.2, -0.1, 0.05};
     config.calibration.imu_T_lidar.rotation = {
-        std::cos(M_PI / 4), 0.0, 0.0, std::sin(M_PI / 4)};  // 90° yaw
+        std::cos(std::numbers::pi / 4), 0.0, 0.0, std::sin(std::numbers::pi / 4)};  // 90° yaw
 
     bool ok = engine.initialize(config);
     assert(ok);
