@@ -282,14 +282,17 @@ static void test_config_copy_preserves_calibration() {
     std::puts("  config copy preserves calibration       OK");
 }
 
-// ── Test: use_bspline_interpolation forwarded to SlamEngineConfig ────────────
+// ── Test: use_bspline_interpolation in SlamEngineConfig ──────────────────────
+// Verifies the field exists, defaults to false, and is accepted by initialize().
+// The single-line forwarding to SlamTimeSyncConfig (in slam_engine.cpp) is
+// verified by code inspection — SlamTimeSyncConfig is internal with no getter.
 
 static void test_bspline_interpolation_flag() {
     // Default should be false
     SlamEngineConfig config;
     assert(!config.use_bspline_interpolation);
 
-    // Set to true and verify it survives initialize
+    // Set to true — initialize() should accept it without error
     config.use_bspline_interpolation = true;
     AcmeSlamEngine engine;
     assert(engine.initialize(config));
