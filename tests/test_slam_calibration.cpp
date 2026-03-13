@@ -282,6 +282,26 @@ static void test_config_copy_preserves_calibration() {
     std::puts("  config copy preserves calibration       OK");
 }
 
+// ── Test: use_bspline_interpolation forwarded to SlamEngineConfig ────────────
+
+static void test_bspline_interpolation_flag() {
+    // Default should be false
+    SlamEngineConfig config;
+    assert(!config.use_bspline_interpolation);
+
+    // Set to true and verify it survives initialize
+    config.use_bspline_interpolation = true;
+    AcmeSlamEngine engine;
+    assert(engine.initialize(config));
+
+    // Copy preserves the flag
+    SlamEngineConfig config2 = config;
+    assert(config2.use_bspline_interpolation);
+
+    engine.shutdown();
+    std::puts("  use_bspline_interpolation flag          OK");
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -298,6 +318,7 @@ int main() {
     test_engine_init_full_calibration();
     test_engine_init_from_yaml();
     test_config_copy_preserves_calibration();
+    test_bspline_interpolation_flag();
     std::puts("SlamCalibration: ALL TESTS PASSED");
     return 0;
 }

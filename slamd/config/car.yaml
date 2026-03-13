@@ -58,7 +58,6 @@ slam:
 
   # ── Time sync ─────────────────────────────────────────────────────────
   enable_drift_compensation: true
-  sort_window_ns: 5000000
-
+  sort_window_ns: 5000000  use_bspline_interpolation: false
   publish_propagated_poses: false    # eval only needs corrected poses
 
