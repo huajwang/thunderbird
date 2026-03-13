@@ -1026,16 +1026,10 @@ bool loadConfig(const std::string& path, DaemonConfig& config,
     error = "yaml-cpp implementation pending";
     return false;
 #else
-    // Stub: check the file exists, use defaults.
-    std::ifstream fs(path);
-    if (!fs.is_open()) {
-        error = "Cannot open config file: " + path;
-        return false;
-    }
+    // Stub: use defaults and delegate calibration parsing to helper.
     // Apply defaults (already set in DaemonConfig constructors).
     config = DaemonConfig{};
     config.sensor.device_uri = "";  // simulated mode
-    fs.close();
 
     // Parse calibration_file key and load CalibrationBundle via shared helper.
     return parseCalibrationFile(path, config.slam.calibration, error);

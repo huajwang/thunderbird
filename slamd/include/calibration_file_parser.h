@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 
 namespace thunderbird::slamd {
 
@@ -47,15 +48,24 @@ inline bool parseCalibrationFile(const std::string& config_path,
 
         std::string val = trimmed.substr(kCalibKeyLen);
 
-        // Trim whitespace and quotes.
-        size_t vs = val.find_first_not_of(" \t\"'");
+        // Trim leading/trailing whitespace.
+        size_t vs = val.find_first_not_of(" \t");
         if (vs == std::string::npos) {
             error = "calibration_file key present but value is empty/whitespace";
             return false;
         }
         val = val.substr(vs);
-        size_t ve = val.find_last_not_of(" \t\r\n\"'");
+        size_t ve = val.find_last_not_of(" \t\r\n");
         if (ve != std::string::npos) val = val.substr(0, ve + 1);
+
+        // Strip surrounding matching quotes (either '...' or "..."), if
+        // present.
+        if (val.size() >= 2 &&
+            ((val.front() == '\'' && val.back() == '\'') ||
+             (val.front() == '"' && val.back() == '"'))) {
+            val = val.substr(1, val.size() - 2);
+        }
+
         if (val.empty()) {
             error = "calibration_file key present but value is empty";
             return false;
@@ -68,8 +78,24 @@ inline bool parseCalibrationFile(const std::string& config_path,
         if (calib_path.is_relative())
             calib_path = config_dir / calib_path;
         auto canonical = std::filesystem::canonical(calib_path, ec);
-        if (ec || !std::filesystem::is_regular_file(canonical, ec)) {
-            error = "Calibration file not found: " + calib_path.string();
+        if (ec) {
+            if (ec == std::errc::no_such_file_or_directory) {
+                error = "Calibration file not found: " + calib_path.string();
+            } else {
+                error = "Failed to access calibration file '" +
+                        calib_path.string() + "': " + ec.message();
+            }
+            return false;
+        }
+        bool is_file = std::filesystem::is_regular_file(canonical, ec);
+        if (ec) {
+            error = "Failed to stat calibration file '" + canonical.string() +
+                    "': " + ec.message();
+            return false;
+        }
+        if (!is_file) {
+            error = "Calibration path is not a regular file: " +
+                    canonical.string();
             return false;
         }
         if (!calibration.load_yaml(canonical.string())) {
