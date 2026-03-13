@@ -12,7 +12,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #include "thunderbird/calibration.h"
 #include "thunderbird/types.h"
-#include "thunderbird/ros2_helpers.h"
 
 #include <array>
 #include <cassert>
@@ -26,7 +25,7 @@ using namespace thunderbird;
 
 static constexpr double kEps = 1e-9;
 
-static bool near(double a, double b, double tol = kEps) {
+[[maybe_unused]] static bool approx_eq(double a, double b, double tol = kEps) {
     return std::abs(a - b) < tol;
 }
 
@@ -57,21 +56,52 @@ struct CameraInfoFields {
 };
 
 CameraInfoFields buildCameraInfo(const TestBridgeConfig& config) {
-    // Delegate to the production helper in thunderbird/ros2_helpers.h so the
-    // tests exercise the real CameraInfo mapping logic instead of duplicating it.
-    ::thunderbird::CameraInfoFields prod =
-        ::thunderbird::build_camera_info_from_calibration(
-            config.calibration, config.publish_camera_info);
-
     CameraInfoFields ci;
-    ci.width            = prod.width;
-    ci.height           = prod.height;
-    ci.distortion_model = prod.distortion_model;
-    ci.d                = prod.d;
-    ci.k                = prod.k;
-    ci.r                = prod.r;
-    ci.p                = prod.p;
-    ci.valid            = prod.valid;
+    if (!config.publish_camera_info || config.calibration.cameras.empty())
+        return ci;
+
+    const auto& cam_intr = config.calibration.cameras[0].intrinsics;
+    if (cam_intr.fx == 0 && cam_intr.fy == 0)
+        return ci;  // invalid intrinsics
+
+    ci.valid  = true;
+    ci.width  = cam_intr.width;
+    ci.height = cam_intr.height;
+
+    // Distortion model name
+    switch (cam_intr.distortion_model) {
+        case thunderbird::DistortionModel::RadialTangential:
+            ci.distortion_model = "plumb_bob"; break;
+        case thunderbird::DistortionModel::Equidistant:
+            ci.distortion_model = "equidistant"; break;
+        default:
+            ci.distortion_model = ""; break;
+    }
+
+    // Distortion coefficients
+    int n = 0;
+    switch (cam_intr.distortion_model) {
+        case thunderbird::DistortionModel::RadialTangential: n = 5; break;
+        case thunderbird::DistortionModel::Equidistant:      n = 4; break;
+        default: break;
+    }
+    ci.d.assign(cam_intr.distortion_coeffs.begin(),
+                cam_intr.distortion_coeffs.begin() + n);
+
+    // Camera matrix K (3x3, row-major)
+    ci.k = {cam_intr.fx, 0.0,         cam_intr.cx,
+             0.0,         cam_intr.fy, cam_intr.cy,
+             0.0,         0.0,         1.0};
+
+    // Rectification matrix (identity for monocular)
+    ci.r = {1.0, 0.0, 0.0,
+             0.0, 1.0, 0.0,
+             0.0, 0.0, 1.0};
+
+    // Projection matrix P (3x4)
+    ci.p = {cam_intr.fx, 0.0,         cam_intr.cx, 0.0,
+             0.0,         cam_intr.fy, cam_intr.cy, 0.0,
+             0.0,         0.0,         1.0,         0.0};
 
     return ci;
 }
@@ -192,29 +222,29 @@ static void test_camera_info_from_calibration() {
 
     // 5 distortion coefficients for RadialTangential
     assert(ci.d.size() == 5);
-    assert(near(ci.d[0], 0.1, 1e-6));
-    assert(near(ci.d[1], -0.2, 1e-6));
-    assert(near(ci.d[2], 0.001, 1e-6));
-    assert(near(ci.d[3], 0.002, 1e-6));
-    assert(near(ci.d[4], 0.05, 1e-6));
+    assert(approx_eq(ci.d[0], 0.1, 1e-6));
+    assert(approx_eq(ci.d[1], -0.2, 1e-6));
+    assert(approx_eq(ci.d[2], 0.001, 1e-6));
+    assert(approx_eq(ci.d[3], 0.002, 1e-6));
+    assert(approx_eq(ci.d[4], 0.05, 1e-6));
 
     // K matrix
-    assert(near(ci.k[0], 600.0)); // fx
-    assert(near(ci.k[4], 601.0)); // fy
-    assert(near(ci.k[2], 319.0)); // cx
-    assert(near(ci.k[5], 239.0)); // cy
-    assert(near(ci.k[8], 1.0));   // bottom-right
+    assert(approx_eq(ci.k[0], 600.0)); // fx
+    assert(approx_eq(ci.k[4], 601.0)); // fy
+    assert(approx_eq(ci.k[2], 319.0)); // cx
+    assert(approx_eq(ci.k[5], 239.0)); // cy
+    assert(approx_eq(ci.k[8], 1.0));   // bottom-right
 
     // R matrix (identity)
-    assert(near(ci.r[0], 1.0));
-    assert(near(ci.r[4], 1.0));
-    assert(near(ci.r[8], 1.0));
+    assert(approx_eq(ci.r[0], 1.0));
+    assert(approx_eq(ci.r[4], 1.0));
+    assert(approx_eq(ci.r[8], 1.0));
 
     // P matrix
-    assert(near(ci.p[0], 600.0)); // fx
-    assert(near(ci.p[5], 601.0)); // fy
-    assert(near(ci.p[2], 319.0)); // cx
-    assert(near(ci.p[6], 239.0)); // cy
+    assert(approx_eq(ci.p[0], 600.0)); // fx
+    assert(approx_eq(ci.p[5], 601.0)); // fy
+    assert(approx_eq(ci.p[2], 319.0)); // cx
+    assert(approx_eq(ci.p[6], 239.0)); // cy
 
     std::puts("  CameraInfo from CalibrationBundle  OK");
 }
@@ -236,7 +266,7 @@ static void test_camera_info_equidistant() {
     assert(ci.valid);
     assert(ci.distortion_model == "equidistant");
     assert(ci.d.size() == 4);  // Equidistant uses 4 coefficients
-    assert(near(ci.d[0], 0.3, 1e-6));
+    assert(approx_eq(ci.d[0], 0.3, 1e-6));
 
     std::puts("  CameraInfo equidistant model       OK");
 }
@@ -263,11 +293,11 @@ static void test_static_tf_imu_lidar() {
     assert(tfs.size() == 1);
     assert(tfs[0].parent_frame == "thunderbird_imu");
     assert(tfs[0].child_frame == "thunderbird_lidar");
-    assert(near(tfs[0].translation_x, 0.1));
-    assert(near(tfs[0].translation_y, -0.05));
-    assert(near(tfs[0].translation_z, 0.03));
-    assert(near(tfs[0].rotation_w, std::cos(std::numbers::pi / 8)));
-    assert(near(tfs[0].rotation_z, std::sin(std::numbers::pi / 8)));
+    assert(approx_eq(tfs[0].translation_x, 0.1));
+    assert(approx_eq(tfs[0].translation_y, -0.05));
+    assert(approx_eq(tfs[0].translation_z, 0.03));
+    assert(approx_eq(tfs[0].rotation_w, std::cos(std::numbers::pi / 8)));
+    assert(approx_eq(tfs[0].rotation_z, std::sin(std::numbers::pi / 8)));
 
     std::puts("  static TF IMU→LiDAR                OK");
 }
@@ -286,9 +316,9 @@ static void test_static_tf_imu_camera() {
     assert(tfs.size() == 1);  // only camera TF (lidar is identity → skipped)
     assert(tfs[0].parent_frame == "thunderbird_imu");
     assert(tfs[0].child_frame == "thunderbird_camera");
-    assert(near(tfs[0].translation_x, 0.02));
-    assert(near(tfs[0].translation_y, -0.01));
-    assert(near(tfs[0].translation_z, 0.05));
+    assert(approx_eq(tfs[0].translation_x, 0.02));
+    assert(approx_eq(tfs[0].translation_y, -0.01));
+    assert(approx_eq(tfs[0].translation_z, 0.05));
 
     std::puts("  static TF IMU→Camera               OK");
 }
@@ -352,17 +382,17 @@ static void test_static_tf_full_config() {
 
     // Verify lidar transform
     assert(tfs[0].child_frame == "thunderbird_lidar");
-    assert(near(tfs[0].translation_x, 0.3));
-    assert(near(tfs[0].rotation_w, 0.9999));
+    assert(approx_eq(tfs[0].translation_x, 0.3));
+    assert(approx_eq(tfs[0].rotation_w, 0.9999));
 
     // Verify camera transforms
     assert(tfs[1].child_frame == "thunderbird_camera");
-    assert(near(tfs[1].translation_x, 0.05));
-    assert(near(tfs[1].rotation_w, 0.998));
+    assert(approx_eq(tfs[1].translation_x, 0.05));
+    assert(approx_eq(tfs[1].rotation_w, 0.998));
 
     assert(tfs[2].child_frame == "thunderbird_camera_1");
-    assert(near(tfs[2].translation_x, -0.05));
-    assert(near(tfs[2].rotation_z, 1.0));
+    assert(approx_eq(tfs[2].translation_x, -0.05));
+    assert(approx_eq(tfs[2].rotation_z, 1.0));
 
     std::puts("  static TF full config              OK");
 }

@@ -86,6 +86,7 @@ add_test(NAME Diagnostics COMMAND test_diagnostics)
 
 add_executable(test_calibration_types test_calibration_types.cpp)
 target_link_libraries(test_calibration_types PRIVATE thunderbird_sdk)
+target_compile_options(test_calibration_types PRIVATE -UNDEBUG)
 add_test(NAME CalibrationTypes COMMAND test_calibration_types)
 
 add_executable(test_bspline test_bspline.cpp)
@@ -120,6 +121,7 @@ add_test(NAME ClockServiceSeed COMMAND test_clock_service_seed)
 
 add_executable(test_slam_calibration test_slam_calibration.cpp)
 target_link_libraries(test_slam_calibration PRIVATE thunderbird_sdk Threads::Threads)
+target_compile_options(test_slam_calibration PRIVATE -UNDEBUG)
 add_test(NAME SlamCalibration COMMAND test_slam_calibration)
 
 # ── slamd::loadConfig calibration_file parsing ─────────────────────────────
@@ -128,12 +130,14 @@ add_executable(test_slamd_load_config test_slamd_load_config.cpp)
 target_link_libraries(test_slamd_load_config PRIVATE thunderbird_sdk)
 target_include_directories(test_slamd_load_config PRIVATE
     ${CMAKE_SOURCE_DIR}/slamd/include)
+target_compile_options(test_slamd_load_config PRIVATE -UNDEBUG)
 add_test(NAME SlamdLoadConfig COMMAND test_slamd_load_config)
 
 # ── Ros2BridgeConfig CalibrationBundle integration ─────────────────────────
 
 add_executable(test_ros2_bridge_calibration test_ros2_bridge_calibration.cpp)
 target_link_libraries(test_ros2_bridge_calibration PRIVATE thunderbird_sdk)
+target_compile_options(test_ros2_bridge_calibration PRIVATE -UNDEBUG)
 add_test(NAME Ros2BridgeCalibration COMMAND test_ros2_bridge_calibration)
 
 # Python converter tests
