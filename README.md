@@ -119,27 +119,8 @@ cd build && ctest --output-on-failure
 ./build/examples/device_firmware_demo
 ```
 
-### Build with Python bindings
-
-```bash
-pip install pybind11
-cmake -B build -DTHUNDERBIRD_BUILD_PYTHON=ON
-cmake --build build --parallel
-
-# Run
-cd python
-PYTHONPATH=../build/python python example.py
-```
-
-### Build the ROS 2 bridge
-
-```bash
-# Inside a ROS 2 workspace
-ln -s /path/to/thunderbird/ros2_bridge src/thunderbird_ros2_bridge
-colcon build --packages-select thunderbird_ros2_bridge
-source install/setup.bash
-ros2 run thunderbird_ros2_bridge thunderbird_ros2_node
-```
+> **Python bindings & ROS 2 bridge** build instructions are in
+> [docs/building.md](docs/building.md).
 
 ---
 
@@ -211,240 +192,25 @@ cfg.sync = sync;
 
 ## Time Synchronization — How It Works
 
-```
-Time ──────────────────────────────────────────────────────▶
-
-LiDAR  ─── L1 ─────────────── L2 ─────────────── L3 ───
-            10 Hz
-
-IMU    ─ I1 I2 I3 I4 I5 I6 I7 I8 I9 I10 I11 I12 I13 ──
-            200 Hz
-
-Camera ──── C1 ─────── C2 ─────── C3 ─────── C4 ───────
-            30 Hz
-
-SyncEngine takes each LiDAR frame as reference and finds the
-nearest IMU sample and Camera frame within ±tolerance_ns.
-
-Bundle 1:  L1 + I_nearest + C_nearest
-Bundle 2:  L2 + I_nearest + C_nearest
-...
-```
-
-**Algorithm** (per sync cycle):
-1. Pop the oldest unconsumed LiDAR frame → `ref_ts`
-2. Search IMU queue for sample closest to `ref_ts` within tolerance
-3. Search Camera queue for frame closest to `ref_ts` within tolerance
-4. If Camera is available, emit `SyncBundle`; evict consumed data
-5. If not, wait until next poll cycle
+> See [docs/time-synchronization.md](docs/time-synchronization.md) for the
+> timing diagram and per-cycle algorithm details.
 
 ---
 
 ## CI/CD & Security
 
-Four GitHub Actions workflows implement a three-tier artifact promotion model
-(dev → staging → production):
-
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `ci.yml` | Push/PR | Build matrix + smoke tests + dev Docker publish |
-| `release.yml` | `vX.Y.Z` / `vX.Y.Z-rc.N` tag | Full release (`.deb`, `.whl`, Docker, GitHub Release) |
-| `promote.yml` | Manual | Zero-rebuild RC → production promotion |
-| `security.yml` | Push/PR + weekly | CodeQL, Trivy, SBOM, Scorecard, secret scan |
-
-**Security**: Cosign keyless signing (Sigstore OIDC), SLSA L2+ provenance,
-Syft SBOM, Trivy container scanning, Dependabot, OpenSSF Scorecard.
-See [SECURITY.md](SECURITY.md) for vulnerability reporting.
-See [ENVIRONMENTS.md](ENVIRONMENTS.md) for environment protection rules.
-
-> **Full CI/CD architecture**, caching strategy, release pipeline stages,
-> artifact promotion model, and security details are documented in
-> [`.github/copilot-instructions.md`](.github/copilot-instructions.md).
-
-### Release Artifacts
-
-A single tag push (`git tag v1.2.3 && git push --tags`) produces:
-
-| Artifact | Format | Platforms |
-|----------|--------|-----------|
-| Debian runtime pkg | `libthunderbird-sdk0_*.deb` | amd64, arm64 |
-| Debian dev pkg | `libthunderbird-sdk-dev_*.deb` | amd64, arm64 |
-| Python wheels | `.whl` (manylinux2014) | x86_64, aarch64 × CPython 3.9–3.12 |
-| Docker runtime image | OCI multi-arch | linux/amd64, linux/arm64 |
-| Docker dev image | OCI multi-arch | linux/amd64, linux/arm64 |
-| Checksums | `SHA256SUMS.txt` + cosign signature | — |
-
-### Creating a Release
-
-```bash
-# 1. Update CMakeLists.txt: project(thunderbird_sdk VERSION X.Y.Z ...)
-# 2. Commit and tag:
-git commit -am "release: v1.2.3"
-git tag v1.2.3
-git push origin main --tags
-# 3. CI builds all artifacts with version injected automatically
-```
-
-For the promoted-release workflow (RC → production), see [ENVIRONMENTS.md](ENVIRONMENTS.md).
+> See [docs/ci-cd.md](docs/ci-cd.md) for workflows, release artifacts,
+> security tooling, and the release process.
+>
+> See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+> See [ENVIRONMENTS.md](ENVIRONMENTS.md) for environment protection rules.
 
 ---
 
-### Docker Images
+### Packaging — Docker, Debian & Python Wheels
 
-Two multi-arch images (linux/amd64 + linux/arm64) are published to GHCR on every release:
-
-| Image | Base | Contents | Size |
-|-------|------|----------|------|
-| `thunderbird-runtime` | Ubuntu 24.04 | Shared library only (`.so.*`) | ~30 MB |
-| `thunderbird-dev` | Ubuntu 24.04 | Headers, static + shared libs, pkg-config, CMake config, build tools, Python, source tree, tests | ~400 MB |
-
-#### Tag strategy
-
-Each release produces four tags per image:
-
-```
-ghcr.io/OWNER/thunderbird-runtime:1.2.3    # exact version
-ghcr.io/OWNER/thunderbird-runtime:1.2      # minor track
-ghcr.io/OWNER/thunderbird-runtime:1        # major track
-ghcr.io/OWNER/thunderbird-runtime:latest   # latest stable
-```
-
-#### Pull & run
-
-```bash
-# Pull the minimal runtime image (shared lib only, non-root)
-docker pull ghcr.io/OWNER/thunderbird-runtime:1.2.3
-
-# Pull the full dev environment
-docker pull ghcr.io/OWNER/thunderbird-dev:1.2.3
-
-# Run the dev container interactively
-docker run --rm -it ghcr.io/OWNER/thunderbird-dev:1.2.3
-# Inside: gcc, cmake, python3, gdb, valgrind all available
-# SDK pre-installed: pkg-config --cflags --libs thunderbird-sdk
-```
-
-#### Build locally
-
-```bash
-# Single-arch (native)
-docker build --build-arg VERSION=0.1.0 \
-  -f docker/Dockerfile.runtime -t thunderbird-runtime .
-
-# Multi-arch (requires buildx)
-docker buildx create --use
-docker buildx build --platform linux/amd64,linux/arm64 \
-  --build-arg VERSION=0.1.0 \
-  -f docker/Dockerfile.runtime -t thunderbird-runtime .
-```
-
-#### Verify image signature
-
-```bash
-cosign verify \
-  --certificate-identity-regexp "github.com/OWNER/thunderbird" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  ghcr.io/OWNER/thunderbird-runtime:1.2.3
-```
-
-### Debian Packages
-
-The SDK produces two Debian packages following Debian policy 4.6.2:
-
-| Package | Contents | Install path |
-|---------|----------|-------------|
-| `libthunderbird-sdk0` | Shared library (`libthunderbird_sdk.so.0.*`) | `/usr/lib/<multiarch>/` |
-| `libthunderbird-sdk-dev` | Headers, static lib (`.a`), dev symlink (`.so`), pkg-config, CMake config | `/usr/include/thunderbird/`, `/usr/lib/<multiarch>/` |
-
-**Build locally:**
-
-```bash
-# Install build deps
-sudo apt-get install build-essential cmake pkg-config debhelper devscripts
-
-# Stamp the changelog (version from CMakeLists.txt)
-./scripts/update-changelog.sh
-
-# Build both .deb packages
-dpkg-buildpackage -us -uc -b
-
-# Packages appear in parent directory
-ls ../*.deb
-# libthunderbird-sdk0_0.1.0_amd64.deb
-# libthunderbird-sdk-dev_0.1.0_amd64.deb
-```
-
-**Install from GitHub Release:**
-
-```bash
-# Download the latest release .deb packages (replace VERSION and ARCH)
-# ARCH is typically amd64 or arm64
-VERSION="0.1.0"
-ARCH="amd64"
-gh release download "v${VERSION}" \
-  --repo huajwang/thunderbird \
-  --pattern "libthunderbird-sdk0_${VERSION}_${ARCH}.deb" \
-  --pattern "libthunderbird-sdk-dev_${VERSION}_${ARCH}.deb"
-
-# Install runtime + dev
-sudo dpkg -i libthunderbird-sdk0_*.deb libthunderbird-sdk-dev_*.deb
-```
-
-Or download manually from the [Releases](https://github.com/huajwang/thunderbird/releases) page and then:
-
-```bash
-# Install the downloaded .deb files
-sudo dpkg -i libthunderbird-sdk0_*.deb libthunderbird-sdk-dev_*.deb
-```
-
-**Install from local build:**
-
-```bash
-# After running dpkg-buildpackage, packages are in the parent directory
-sudo dpkg -i ../libthunderbird-sdk0_*.deb ../libthunderbird-sdk-dev_*.deb
-```
-
-**Use the installed SDK:**
-
-```bash
-# Use via pkg-config
-g++ my_app.cpp $(pkg-config --cflags --libs thunderbird-sdk) -o my_app
-
-# Use via CMake
-#   find_package(ThunderbirdSDK REQUIRED)
-#   target_link_libraries(my_app PRIVATE Thunderbird::thunderbird_sdk_shared)
-```
-
-### Python Wheels
-
-The SDK publishes PEP 599-compliant **manylinux2014** wheels for CPython 3.9–3.12
-on both x86_64 and aarch64:
-
-| Wheel tag | Platform | Python | glibc |
-|-----------|----------|--------|-------|
-| `manylinux2014_x86_64` | x86_64 | cp39–cp312 | ≥ 2.17 |
-| `manylinux2014_aarch64` | aarch64 | cp39–cp312 | ≥ 2.17 |
-
-**Build pipeline:** scikit-build-core compiles the C++ SDK + pybind11 extension
-inside the official PyPA manylinux2014 container (CentOS 7, devtoolset-12), then
-`auditwheel repair` bundles any non-whitelisted shared libraries and applies the
-correct platform tag. `libstdc++` is statically linked (`-static-libstdc++`) so
-wheels work on any system with glibc ≥ 2.17.
-
-```bash
-# Install from release wheel (once published to PyPI or GH Release)
-pip install spatial-sdk
-
-# Build from source (requires C++ compiler + CMake ≥ 3.16)
-pip install .
-
-# Build wheels locally with cibuildwheel
-pip install cibuildwheel
-cibuildwheel --output-dir dist/
-
-# Build a single wheel (useful for development)
-pip wheel . --no-deps -w dist/
-```
+> Docker images, Debian packages, and Python wheel build/install instructions
+> are in [docs/packaging.md](docs/packaging.md).
 
 ---
 
