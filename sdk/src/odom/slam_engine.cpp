@@ -572,10 +572,11 @@ bool AcmeSlamEngine::initialize(const SlamEngineConfig& config) {
 
     // ── Configure time sync ─────────────────────────────────────────────
     SlamTimeSyncConfig tsc;
-    tsc.imu_rate_hz              = config.imu_rate_hz;
-    tsc.lidar_rate_hz            = config.lidar_rate_hz;
+    tsc.imu_rate_hz               = config.imu_rate_hz;
+    tsc.lidar_rate_hz             = config.lidar_rate_hz;
     tsc.enable_drift_compensation = config.enable_drift_compensation;
-    tsc.sort_window_ns           = config.sort_window_ns;
+    tsc.sort_window_ns            = config.sort_window_ns;
+    tsc.use_bspline_interpolation = config.use_bspline_interpolation;
     impl_->time_sync = std::make_unique<SlamTimeSync>(tsc);
 
     // ── Configure ESIKF ─────────────────────────────────────────────────

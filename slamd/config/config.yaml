@@ -63,6 +63,7 @@ slam:
   # ── Time sync ─────────────────────────────────────────────────────────
   enable_drift_compensation: true
   sort_window_ns: 5000000          # 5 ms
+  use_bspline_interpolation: false # cubic B-spline IMU interp at scan boundaries
 
   # ── Output ────────────────────────────────────────────────────────────
   publish_propagated_poses: true   # emit Pose6D at IMU rate

@@ -197,8 +197,9 @@ struct SlamEngineConfig {
     double lidar_rate_hz   = 10.0;    ///< expected LiDAR rate
 
     // ── Time sync (forwarded to SlamTimeSync) ───────────────────────────
-    bool   enable_drift_compensation = true;
-    int64_t sort_window_ns           = 5'000'000;  // 5 ms
+    bool   enable_drift_compensation  = true;
+    int64_t sort_window_ns            = 5'000'000;  // 5 ms
+    bool   use_bspline_interpolation  = false;
 
     // ── Queue capacities ────────────────────────────────────────────────
     /// IMU ingress ring buffer (power-of-two).
