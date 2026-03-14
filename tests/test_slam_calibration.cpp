@@ -352,11 +352,21 @@ static void test_refine_on_constructs_refiner() {
         engine.feedImu(imu);
     }
 
+    // Wait for gravity alignment to complete
+    {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (engine.status() != TrackingStatus::Initializing) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        assert(engine.status() != TrackingStatus::Initializing);
+    }
+
     // Build a synthetic flat ground cloud at z ≈ -1.5 (LiDAR frame).
     // With ground_max_height = -0.3 and min_ground_points = 10, all 200
     // points qualify as ground candidates and should produce a valid plane.
     auto cloud = std::make_shared<PointCloudFrame>();
-    cloud->timestamp_ns = 300 * 5'000'000LL;  // after last IMU
+    cloud->timestamp_ns = 250 * 5'000'000LL;  // within IMU range
     cloud->sequence     = 0;
     cloud->is_deskewed  = false;
     cloud->points.resize(200);
@@ -370,16 +380,32 @@ static void test_refine_on_constructs_refiner() {
     }
     engine.feedPointCloud(cloud);
 
-    // Allow worker to process the scan
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    // Check that the refiner has processed at least one frame
-    SlamOutput out;
-    if (engine.getLatestOutput(out)) {
-        assert(out.refine_frame_count > 0);
-        // Rotation should be near identity for a perfectly flat cloud
-        assert(near(out.refine_rotation[0], 1.0, 0.05));
+    // Feed trailing IMU beyond the cloud so the time_sync sort buffer
+    // flushes enough samples for measurement assembly.
+    for (int i = 0; i < 10; ++i) {
+        odom::ImuSample tail{};
+        tail.timestamp_ns = cloud->timestamp_ns
+                          + static_cast<int64_t>(i + 1) * 5'000'000;
+        tail.accel = {0.0, 0.0, -9.81};
+        tail.gyro  = {0.0, 0.0, 0.0};
+        engine.feedImu(tail);
     }
+
+    // Poll for worker to process the scan (timeout 2 s)
+    SlamOutput out;
+    bool have_output = false;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (engine.getLatestOutput(out)) {
+            have_output = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    assert(have_output);
+    assert(out.refine_frame_count > 0);
+    // Rotation should be near identity for a perfectly flat cloud
+    assert(near(out.refine_rotation[0], 1.0, 0.05));
 
     engine.shutdown();
     std::puts("  refine on: constructs and accepts data  OK");
@@ -432,9 +458,19 @@ static void test_reset_clears_refiner() {
         engine.feedImu(imu);
     }
 
+    // Wait for gravity alignment to complete
+    {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (engine.status() != TrackingStatus::Initializing) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        assert(engine.status() != TrackingStatus::Initializing);
+    }
+
     // Feed a ground-plane cloud to drive refiner to non-default state
     auto cloud = std::make_shared<PointCloudFrame>();
-    cloud->timestamp_ns = 300 * 5'000'000LL;
+    cloud->timestamp_ns = 250 * 5'000'000LL;
     cloud->sequence     = 0;
     cloud->is_deskewed  = false;
     cloud->points.resize(200);
@@ -447,17 +483,41 @@ static void test_reset_clears_refiner() {
         pt.dt_ns = 0;
     }
     engine.feedPointCloud(cloud);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    // Verify refiner has processed at least one frame before reset
+    // Feed trailing IMU beyond the cloud so the time_sync sort buffer
+    // flushes enough samples for measurement assembly.
+    for (int i = 0; i < 10; ++i) {
+        odom::ImuSample tail{};
+        tail.timestamp_ns = cloud->timestamp_ns
+                          + static_cast<int64_t>(i + 1) * 5'000'000;
+        tail.accel = {0.0, 0.0, -9.81};
+        tail.gyro  = {0.0, 0.0, 0.0};
+        engine.feedImu(tail);
+    }
+
+    // Poll until refiner has processed at least one frame
     SlamOutput pre;
-    bool had_output = engine.getLatestOutput(pre);
-    if (had_output) {
+    {
+        bool got = false;
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (engine.getLatestOutput(pre)) { got = true; break; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        assert(got);
         assert(pre.refine_frame_count > 0);
     }
 
-    // Reset and verify refiner state returns to defaults
+    // Reset and wait for async reset to complete
     engine.reset();
+    {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (engine.status() == TrackingStatus::Initializing) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        assert(engine.status() == TrackingStatus::Initializing);
+    }
 
     // Feed fresh IMU + cloud after reset
     for (int i = 0; i < 300; ++i) {
@@ -468,8 +528,18 @@ static void test_reset_clears_refiner() {
         engine.feedImu(imu);
     }
 
+    // Wait for gravity alignment to complete after reset
+    {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (engine.status() != TrackingStatus::Initializing) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        assert(engine.status() != TrackingStatus::Initializing);
+    }
+
     auto cloud2 = std::make_shared<PointCloudFrame>();
-    cloud2->timestamp_ns = 2'000'000'000LL + 300 * 5'000'000LL;
+    cloud2->timestamp_ns = 2'000'000'000LL + 250 * 5'000'000LL;
     cloud2->sequence     = 1;
     cloud2->is_deskewed  = false;
     cloud2->points.resize(200);
@@ -482,11 +552,29 @@ static void test_reset_clears_refiner() {
         pt.dt_ns = 0;
     }
     engine.feedPointCloud(cloud2);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    // After reset, frame_count should have restarted (≤ 1 post-reset scan)
+    // Feed trailing IMU beyond the cloud so the time_sync sort buffer
+    // flushes enough samples for measurement assembly.
+    for (int i = 0; i < 10; ++i) {
+        odom::ImuSample tail{};
+        tail.timestamp_ns = cloud2->timestamp_ns
+                          + static_cast<int64_t>(i + 1) * 5'000'000;
+        tail.accel = {0.0, 0.0, -9.81};
+        tail.gyro  = {0.0, 0.0, 0.0};
+        engine.feedImu(tail);
+    }
+
+    // Poll for post-reset output
     SlamOutput post;
-    if (engine.getLatestOutput(post)) {
+    {
+        bool got = false;
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (engine.getLatestOutput(post)) { got = true; break; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        assert(got);
+        // After reset, frame_count should have restarted (≤ 1 post-reset scan)
         assert(post.refine_frame_count <= 1);
     }
 

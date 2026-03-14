@@ -248,6 +248,7 @@ struct AcmeSlamEngine::Impl {
     // ── Online extrinsic refiner (only when refine_imu_T_lidar is true) ─
     std::unique_ptr<calib::OnlineRefiner> refiner;
     SensorExtrinsic base_imu_T_lidar;  ///< original extrinsic from config
+    double refiner_ground_max_height{0};  ///< cached for pre-filtering
     std::vector<calib::RefinerPoint> refiner_pts;  ///< reusable conversion buffer
 
     // ── Constructor ─────────────────────────────────────────────────────
@@ -432,13 +433,19 @@ struct AcmeSlamEngine::Impl {
             RuntimeProfiler::Scope refine_scope(profiler,
                 ProfileModule::OnlineRefine);
 
-            // Convert PointXYZIT → RefinerPoint (float → double)
+            // Convert PointXYZIT → RefinerPoint (float → double), but only
+            // for ground-candidate points to avoid unnecessary memory traffic.
             const auto& pts = deskewed->points;
-            refiner_pts.resize(pts.size());
+            refiner_pts.clear();
+            refiner_pts.reserve(pts.size());
             for (size_t i = 0; i < pts.size(); ++i) {
-                refiner_pts[i].x = static_cast<double>(pts[i].x);
-                refiner_pts[i].y = static_cast<double>(pts[i].y);
-                refiner_pts[i].z = static_cast<double>(pts[i].z);
+                const auto z = static_cast<double>(pts[i].z);
+                if (z > refiner_ground_max_height)
+                    continue;
+                refiner_pts.push_back({
+                    static_cast<double>(pts[i].x),
+                    static_cast<double>(pts[i].y),
+                    z});
             }
 
             refiner->processFrame(refiner_pts.data(),
@@ -603,8 +610,13 @@ struct AcmeSlamEngine::Impl {
         // Reset profiler.
         profiler.reset();
 
-        // Reset online refiner.
-        if (refiner) refiner->reset();
+        // Reset online refiner and restore ESIKF extrinsic to base
+        // calibration so estimator state stays consistent with the refiner
+        // whose correction output is now reset back to identity.
+        if (refiner) {
+            refiner->reset();
+            esikf.set_extrinsic(base_imu_T_lidar);
+        }
 
         transitionStatus(TrackingStatus::Initializing);
     }
@@ -661,6 +673,7 @@ bool AcmeSlamEngine::initialize(const SlamEngineConfig& config) {
         refcfg.max_correction_height = std::max(src.max_correction_height, 0.0);
         impl_->refiner = std::make_unique<calib::OnlineRefiner>(refcfg);
         impl_->base_imu_T_lidar = config.calibration.imu_T_lidar;
+        impl_->refiner_ground_max_height = refcfg.ground_max_height;
     } else {
         impl_->refiner.reset();
     }
