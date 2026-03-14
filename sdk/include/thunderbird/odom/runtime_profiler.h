@@ -225,17 +225,6 @@ public:
     }
 
 private:
-    // Module names (indexed by ProfileModule enum).
-    static constexpr const char* kModuleNames[kProfileModuleCount] = {
-        "imu_propagate",
-        "deskew",
-        "esikf_update",
-        "ikd_insert",
-        "ikd_rebalance",
-        "scan_total",
-        "worker_idle",
-    };
-
     std::array<RollingStats, kProfileModuleCount> modules_{};
 
     mutable std::mutex mu_;  ///< Serialises snapshot() reads vs worker writes.

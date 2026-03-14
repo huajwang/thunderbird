@@ -11,7 +11,9 @@
 #include "thunderbird/odom/slam_time_sync.h"
 #include "thunderbird/odom/runtime_profiler.h"
 #include "thunderbird/ring_buffer.h"
+#include "calib/online_refiner.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -243,6 +245,12 @@ struct AcmeSlamEngine::Impl {
     // ── Runtime profiler (worker thread only, snapshot() is thread-safe) ─
     RuntimeProfiler profiler;
 
+    // ── Online extrinsic refiner (only when refine_imu_T_lidar is true) ─
+    std::unique_ptr<calib::OnlineRefiner> refiner;
+    SensorExtrinsic base_imu_T_lidar;  ///< original extrinsic from config
+    double refiner_ground_max_height{0};  ///< cached for pre-filtering
+    std::vector<calib::RefinerPoint> refiner_pts;  ///< reusable conversion buffer
+
     // ── Constructor ─────────────────────────────────────────────────────
     Impl() = default;
 
@@ -420,6 +428,52 @@ struct AcmeSlamEngine::Impl {
         const double update_ms =
             std::chrono::duration<double, std::milli>(t1 - t0).count();
 
+        // ── 3c½: Online extrinsic refinement ─────────────────────────
+        if (refiner && update_ok) {
+            RuntimeProfiler::Scope refine_scope(profiler,
+                ProfileModule::OnlineRefine);
+
+            // Convert PointXYZIT → RefinerPoint (float → double), but only
+            // for ground-candidate points to avoid unnecessary memory traffic.
+            const auto& pts = deskewed->points;
+            refiner_pts.clear();
+            refiner_pts.reserve(pts.size());
+            for (size_t i = 0; i < pts.size(); ++i) {
+                const auto z = static_cast<double>(pts[i].z);
+                if (z > refiner_ground_max_height)
+                    continue;
+                refiner_pts.push_back({
+                    static_cast<double>(pts[i].x),
+                    static_cast<double>(pts[i].y),
+                    z});
+            }
+
+            refiner->processFrame(refiner_pts.data(),
+                                  static_cast<int>(refiner_pts.size()));
+
+            // Apply accumulated correction to the base extrinsic
+            auto corr = refiner->correction();
+            if (corr.frame_count > 0) {
+                SensorExtrinsic correction;
+                correction.rotation = {
+                    corr.rotation[0], corr.rotation[1],
+                    corr.rotation[2], corr.rotation[3]};
+                // Apply only the rotational correction to the IMU↔LiDAR
+                // extrinsic.  We intentionally do NOT use corr.height here,
+                // because it is defined as "LiDAR height above ground"
+                // (world/ground frame), whereas base_imu_T_lidar.translation
+                // is expressed in the IMU frame.  Mixing these frames in a
+                // composed SE(3) translation would be inconsistent and can
+                // produce incorrect extrinsic updates.  The height estimate
+                // is still published via SlamOutput::refine_height for
+                // downstream consumers that need it.
+                correction.translation = {0.0, 0.0, 0.0};
+
+                auto refined = base_imu_T_lidar.compose(correction);
+                esikf.set_extrinsic(refined);
+            }
+        }
+
         // ── Sample RSS once per scan (low overhead) ─────────────────
         profiler.sampleMemory();
 
@@ -439,6 +493,17 @@ struct AcmeSlamEngine::Impl {
         output->esikf_residual     = esikf.last_residual;
         output->correspondences    = esikf.last_correspondences;
         output->update_latency_ms  = update_ms;
+
+        // Populate online refinement state
+        if (refiner) {
+            auto corr = refiner->correction();
+            for (int i = 0; i < 4; ++i)
+                output->refine_rotation[i] = corr.rotation[i];
+            output->refine_height      = corr.height;
+            output->refine_confidence  = corr.confidence;
+            output->refine_frame_count = corr.frame_count;
+            output->refine_warning     = corr.warning;
+        }
 
         output_ring.push(output);
 
@@ -545,6 +610,14 @@ struct AcmeSlamEngine::Impl {
         // Reset profiler.
         profiler.reset();
 
+        // Reset online refiner and restore ESIKF extrinsic to base
+        // calibration so estimator state stays consistent with the refiner
+        // whose correction output is now reset back to identity.
+        if (refiner) {
+            refiner->reset();
+            esikf.set_extrinsic(base_imu_T_lidar);
+        }
+
         transitionStatus(TrackingStatus::Initializing);
     }
 };
@@ -583,10 +656,27 @@ bool AcmeSlamEngine::initialize(const SlamEngineConfig& config) {
     impl_->esikf.set_noise_model(config.calibration.imu_noise);
     impl_->esikf.set_extrinsic(config.calibration.imu_T_lidar);
 
-    // Configure ESIKF parameters.  The refine_imu_T_lidar calibration flag
-    // is not yet consumed by EsikfConfig; once online extrinsic refinement is
-    // implemented, it should be wired through an explicit API path.
+    // Configure ESIKF parameters.
     impl_->esikf.set_params(config.esikf);
+
+    // ── Configure online extrinsic refiner ─────────────────────────────
+    if (config.calibration.refine_imu_T_lidar) {
+        // Validate / clamp to sane minimums to avoid divide-by-zero or
+        // nonsensical behaviour in the refiner.
+        const auto& src = config.online_refiner;
+        calib::OnlineRefinerConfig refcfg;
+        refcfg.ground_max_height     = src.ground_max_height;
+        refcfg.min_ground_points     = std::max(src.min_ground_points, 1);
+        refcfg.min_normal_z          = std::clamp(src.min_normal_z, 0.0, 1.0);
+        refcfg.min_height            = std::max(src.min_height, 0.0);
+        refcfg.max_correction_deg    = std::clamp(src.max_correction_deg, 0.0, 180.0);
+        refcfg.max_correction_height = std::max(src.max_correction_height, 0.0);
+        impl_->refiner = std::make_unique<calib::OnlineRefiner>(refcfg);
+        impl_->base_imu_T_lidar = config.calibration.imu_T_lidar;
+        impl_->refiner_ground_max_height = refcfg.ground_max_height;
+    } else {
+        impl_->refiner.reset();
+    }
 
     // ── Reset state ─────────────────────────────────────────────────────
     impl_->esikf.reset();
