@@ -298,6 +298,14 @@ struct SlamOutput {
     double   esikf_residual{0.0};     ///< final point-to-plane residual
     uint32_t correspondences{0};      ///< points matched to map
     double   update_latency_ms{0.0};  ///< wall-clock time for this update
+
+    // ── Online extrinsic refinement state ────────────────────────────────
+    /// Current ground-plane correction (valid when refine_imu_T_lidar is on).
+    double   refine_rotation[4]{1, 0, 0, 0};  ///< accumulated correction [w,x,y,z]
+    double   refine_height{0.0};               ///< LiDAR height above ground (m)
+    double   refine_confidence{0.0};           ///< accumulated confidence
+    int      refine_frame_count{0};            ///< frames processed by refiner
+    bool     refine_warning{false};            ///< correction exceeds threshold
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -332,6 +340,7 @@ enum class ProfileModule : uint8_t {
     IkdRebalance  = 4,   ///< ikd-Tree periodic rebalancing
     ScanTotal     = 5,   ///< Full per-scan processing (3a–3e)
     WorkerIdle    = 6,   ///< Worker thread idle/wait time
+    OnlineRefine  = 7,   ///< Online extrinsic refinement per scan
     Count_                ///< Sentinel — number of modules
 };
 

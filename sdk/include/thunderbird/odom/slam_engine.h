@@ -157,6 +157,17 @@ struct MapConfig {
     int     tree_rebalance_interval = 10;///< scans between ikd-Tree rebalances
 };
 
+/// Configuration for the ground-plane-based online extrinsic refiner.
+/// Active only when CalibrationBundle::refine_imu_T_lidar is true.
+struct OnlineRefinerConfig {
+    double ground_max_height    = -0.5;  ///< max LiDAR-frame Z for ground candidate (m)
+    int    min_ground_points    = 100;   ///< min ground points for valid plane fit
+    double min_normal_z         = 0.9;   ///< min ground normal Z component
+    double min_height           = 1.0;   ///< min ground intercept to accept correction (m)
+    double max_correction_deg   = 2.0;   ///< warning threshold for correction magnitude (°)
+    double max_correction_height = 0.10; ///< warning threshold for height correction (m)
+};
+
 /// ESIKF convergence parameters.
 struct EsikfConfig {
     int     max_iterations     = 5;      ///< maximum Kalman iterations per update
@@ -191,6 +202,11 @@ struct SlamEngineConfig {
 
     // ── Map ─────────────────────────────────────────────────────────────
     MapConfig              map;
+
+    // ── Online extrinsic refinement ─────────────────────────────────────
+    /// Configuration for the ground-plane-based online extrinsic refiner.
+    /// Active only when calibration.refine_imu_T_lidar is true.
+    OnlineRefinerConfig    online_refiner;
 
     // ── Sensor rates (for buffer sizing / gap detection) ────────────────
     double imu_rate_hz     = 400.0;   ///< expected IMU rate

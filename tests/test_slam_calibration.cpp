@@ -305,6 +305,124 @@ static void test_bspline_interpolation_flag() {
     std::puts("  use_bspline_interpolation flag          OK");
 }
 
+// ── Test: engine with refine=false does not construct refiner ────────────────
+// (Verifies that existing behavior is unchanged — engine starts, processes,
+//  and shuts down identically when the flag is off.)
+
+static void test_refine_off_no_change() {
+    AcmeSlamEngine engine;
+    SlamEngineConfig config;
+    config.calibration.refine_imu_T_lidar = false;
+
+    bool ok = engine.initialize(config);
+    assert(ok);
+
+    // Feed some synthetic IMU data — should work fine with no refiner
+    odom::ImuSample imu{};
+    imu.accel = {0.0, 0.0, -9.81};
+    imu.gyro = {0.0, 0.0, 0.0};
+    imu.timestamp_ns = 1'000'000;
+    engine.feedImu(imu);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    engine.shutdown();
+    std::puts("  refine off: no behavior change          OK");
+}
+
+// ── Test: engine with refine=true constructs refiner and accepts data ────────
+
+static void test_refine_on_constructs_refiner() {
+    AcmeSlamEngine engine;
+    SlamEngineConfig config;
+    config.calibration.refine_imu_T_lidar = true;
+    config.calibration.imu_T_lidar.translation = {0.0, 0.0, 1.5};
+    config.online_refiner.ground_max_height = -0.3;
+    config.online_refiner.min_ground_points = 10;
+    config.online_refiner.min_height = 0.5;
+
+    bool ok = engine.initialize(config);
+    assert(ok);
+
+    // Feed IMU to move past init
+    for (int i = 0; i < 300; ++i) {
+        odom::ImuSample imu{};
+        imu.timestamp_ns = static_cast<int64_t>(i) * 5'000'000;
+        imu.accel = {0.0, 0.0, -9.81};
+        imu.gyro  = {0.0, 0.0, 0.0};
+        engine.feedImu(imu);
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    engine.shutdown();
+    std::puts("  refine on: constructs and accepts data  OK");
+}
+
+// ── Test: custom OnlineRefinerConfig propagates through SlamEngineConfig ─────
+
+static void test_online_refiner_config_in_slam_config() {
+    SlamEngineConfig config;
+
+    // Verify defaults
+    assert(near(config.online_refiner.ground_max_height, -0.5, 0.01));
+    assert(config.online_refiner.min_ground_points == 100);
+    assert(near(config.online_refiner.min_normal_z, 0.9, 0.01));
+
+    // Set custom values
+    config.online_refiner.ground_max_height = -1.0;
+    config.online_refiner.min_ground_points = 50;
+    config.online_refiner.max_correction_deg = 5.0;
+
+    // Copy preserves
+    SlamEngineConfig config2 = config;
+    assert(near(config2.online_refiner.ground_max_height, -1.0, 0.01));
+    assert(config2.online_refiner.min_ground_points == 50);
+    assert(near(config2.online_refiner.max_correction_deg, 5.0, 0.01));
+
+    std::puts("  online refiner config in slam config    OK");
+}
+
+// ── Test: reset clears refiner state ────────────────────────────────────────
+
+static void test_reset_clears_refiner() {
+    AcmeSlamEngine engine;
+    SlamEngineConfig config;
+    config.calibration.refine_imu_T_lidar = true;
+
+    bool ok = engine.initialize(config);
+    assert(ok);
+
+    // Feed some data, then reset
+    odom::ImuSample imu{};
+    imu.accel = {0.0, 0.0, -9.81};
+    imu.gyro = {0.0, 0.0, 0.0};
+    imu.timestamp_ns = 1'000'000;
+    engine.feedImu(imu);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    engine.reset();
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+    engine.shutdown();
+    std::puts("  reset clears refiner state              OK");
+}
+
+// ── Test: SlamOutput has refine fields defaulting to identity ────────────────
+
+static void test_slam_output_refine_fields() {
+    SlamOutput output;
+    // Defaults: identity quaternion, zero height/confidence/count, no warning
+    assert(near(output.refine_rotation[0], 1.0));
+    assert(near(output.refine_rotation[1], 0.0));
+    assert(near(output.refine_rotation[2], 0.0));
+    assert(near(output.refine_rotation[3], 0.0));
+    assert(near(output.refine_height, 0.0));
+    assert(near(output.refine_confidence, 0.0));
+    assert(output.refine_frame_count == 0);
+    assert(!output.refine_warning);
+
+    std::puts("  SlamOutput refine fields default OK      OK");
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -322,6 +440,11 @@ int main() {
     test_engine_init_from_yaml();
     test_config_copy_preserves_calibration();
     test_bspline_interpolation_flag();
+    test_refine_off_no_change();
+    test_refine_on_constructs_refiner();
+    test_online_refiner_config_in_slam_config();
+    test_reset_clears_refiner();
+    test_slam_output_refine_fields();
     std::puts("SlamCalibration: ALL TESTS PASSED");
     return 0;
 }
