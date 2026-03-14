@@ -112,7 +112,7 @@ ProfileSnapshot RuntimeProfiler::snapshot() const {
         const auto& rs = mod_copy[i];
         auto& mp       = snap.modules[i];
 
-        mp.name        = kModuleNames[i];
+        mp.name        = profile_module_name(static_cast<ProfileModule>(i));
         mp.invocations = rs.count();
         mp.avg_us      = rs.mean();
         mp.min_us      = rs.min_val();

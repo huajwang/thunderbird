@@ -13,6 +13,7 @@
 #include "thunderbird/ring_buffer.h"
 #include "calib/online_refiner.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -247,6 +248,7 @@ struct AcmeSlamEngine::Impl {
     // ── Online extrinsic refiner (only when refine_imu_T_lidar is true) ─
     std::unique_ptr<calib::OnlineRefiner> refiner;
     SensorExtrinsic base_imu_T_lidar;  ///< original extrinsic from config
+    std::vector<calib::RefinerPoint> refiner_pts;  ///< reusable conversion buffer
 
     // ── Constructor ─────────────────────────────────────────────────────
     Impl() = default;
@@ -432,15 +434,15 @@ struct AcmeSlamEngine::Impl {
 
             // Convert PointXYZIT → RefinerPoint (float → double)
             const auto& pts = deskewed->points;
-            std::vector<calib::RefinerPoint> rpts(pts.size());
+            refiner_pts.resize(pts.size());
             for (size_t i = 0; i < pts.size(); ++i) {
-                rpts[i].x = static_cast<double>(pts[i].x);
-                rpts[i].y = static_cast<double>(pts[i].y);
-                rpts[i].z = static_cast<double>(pts[i].z);
+                refiner_pts[i].x = static_cast<double>(pts[i].x);
+                refiner_pts[i].y = static_cast<double>(pts[i].y);
+                refiner_pts[i].z = static_cast<double>(pts[i].z);
             }
 
-            refiner->processFrame(rpts.data(),
-                                  static_cast<int>(rpts.size()));
+            refiner->processFrame(refiner_pts.data(),
+                                  static_cast<int>(refiner_pts.size()));
 
             // Apply accumulated correction to the base extrinsic
             auto corr = refiner->correction();
@@ -449,10 +451,16 @@ struct AcmeSlamEngine::Impl {
                 correction.rotation = {
                     corr.rotation[0], corr.rotation[1],
                     corr.rotation[2], corr.rotation[3]};
-                // Height correction adjusts the Z translation
-                correction.translation = {
-                    0.0, 0.0,
-                    corr.height - base_imu_T_lidar.translation[2]};
+                // Apply only the rotational correction to the IMU↔LiDAR
+                // extrinsic.  We intentionally do NOT use corr.height here,
+                // because it is defined as "LiDAR height above ground"
+                // (world/ground frame), whereas base_imu_T_lidar.translation
+                // is expressed in the IMU frame.  Mixing these frames in a
+                // composed SE(3) translation would be inconsistent and can
+                // produce incorrect extrinsic updates.  The height estimate
+                // is still published via SlamOutput::refine_height for
+                // downstream consumers that need it.
+                correction.translation = {0.0, 0.0, 0.0};
 
                 auto refined = base_imu_T_lidar.compose(correction);
                 esikf.set_extrinsic(refined);
@@ -641,13 +649,16 @@ bool AcmeSlamEngine::initialize(const SlamEngineConfig& config) {
 
     // ── Configure online extrinsic refiner ─────────────────────────────
     if (config.calibration.refine_imu_T_lidar) {
+        // Validate / clamp to sane minimums to avoid divide-by-zero or
+        // nonsensical behaviour in the refiner.
+        const auto& src = config.online_refiner;
         calib::OnlineRefinerConfig refcfg;
-        refcfg.ground_max_height     = config.online_refiner.ground_max_height;
-        refcfg.min_ground_points     = config.online_refiner.min_ground_points;
-        refcfg.min_normal_z          = config.online_refiner.min_normal_z;
-        refcfg.min_height            = config.online_refiner.min_height;
-        refcfg.max_correction_deg    = config.online_refiner.max_correction_deg;
-        refcfg.max_correction_height = config.online_refiner.max_correction_height;
+        refcfg.ground_max_height     = src.ground_max_height;
+        refcfg.min_ground_points     = std::max(src.min_ground_points, 1);
+        refcfg.min_normal_z          = std::clamp(src.min_normal_z, 0.0, 1.0);
+        refcfg.min_height            = std::max(src.min_height, 0.0);
+        refcfg.max_correction_deg    = std::clamp(src.max_correction_deg, 0.0, 180.0);
+        refcfg.max_correction_height = std::max(src.max_correction_height, 0.0);
         impl_->refiner = std::make_unique<calib::OnlineRefiner>(refcfg);
         impl_->base_imu_T_lidar = config.calibration.imu_T_lidar;
     } else {

@@ -329,7 +329,7 @@ static void test_refine_off_no_change() {
     std::puts("  refine off: no behavior change          OK");
 }
 
-// ── Test: engine with refine=true constructs refiner and accepts data ────────
+// ── Test: engine with refine=true processes cloud and updates refine fields ──
 
 static void test_refine_on_constructs_refiner() {
     AcmeSlamEngine engine;
@@ -352,7 +352,35 @@ static void test_refine_on_constructs_refiner() {
         engine.feedImu(imu);
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Build a synthetic flat ground cloud at z ≈ -1.5 (LiDAR frame).
+    // With ground_max_height = -0.3 and min_ground_points = 10, all 200
+    // points qualify as ground candidates and should produce a valid plane.
+    auto cloud = std::make_shared<PointCloudFrame>();
+    cloud->timestamp_ns = 300 * 5'000'000LL;  // after last IMU
+    cloud->sequence     = 0;
+    cloud->is_deskewed  = false;
+    cloud->points.resize(200);
+    for (int j = 0; j < 200; ++j) {
+        auto& pt = cloud->points[static_cast<size_t>(j)];
+        pt.x = static_cast<float>(j % 20) * 0.5f - 5.0f;
+        pt.y = static_cast<float>(j / 20) * 0.5f - 2.5f;
+        pt.z = -1.5f;  // flat ground plane
+        pt.intensity = 100.0f;
+        pt.dt_ns = 0;
+    }
+    engine.feedPointCloud(cloud);
+
+    // Allow worker to process the scan
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // Check that the refiner has processed at least one frame
+    SlamOutput out;
+    if (engine.getLatestOutput(out)) {
+        assert(out.refine_frame_count > 0);
+        // Rotation should be near identity for a perfectly flat cloud
+        assert(near(out.refine_rotation[0], 1.0, 0.05));
+    }
+
     engine.shutdown();
     std::puts("  refine on: constructs and accepts data  OK");
 }
@@ -387,20 +415,80 @@ static void test_reset_clears_refiner() {
     AcmeSlamEngine engine;
     SlamEngineConfig config;
     config.calibration.refine_imu_T_lidar = true;
+    config.calibration.imu_T_lidar.translation = {0.0, 0.0, 1.5};
+    config.online_refiner.ground_max_height = -0.3;
+    config.online_refiner.min_ground_points = 10;
+    config.online_refiner.min_height = 0.5;
 
     bool ok = engine.initialize(config);
     assert(ok);
 
-    // Feed some data, then reset
-    odom::ImuSample imu{};
-    imu.accel = {0.0, 0.0, -9.81};
-    imu.gyro = {0.0, 0.0, 0.0};
-    imu.timestamp_ns = 1'000'000;
-    engine.feedImu(imu);
+    // Feed IMU to move past init
+    for (int i = 0; i < 300; ++i) {
+        odom::ImuSample imu{};
+        imu.timestamp_ns = static_cast<int64_t>(i) * 5'000'000;
+        imu.accel = {0.0, 0.0, -9.81};
+        imu.gyro  = {0.0, 0.0, 0.0};
+        engine.feedImu(imu);
+    }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    // Feed a ground-plane cloud to drive refiner to non-default state
+    auto cloud = std::make_shared<PointCloudFrame>();
+    cloud->timestamp_ns = 300 * 5'000'000LL;
+    cloud->sequence     = 0;
+    cloud->is_deskewed  = false;
+    cloud->points.resize(200);
+    for (int j = 0; j < 200; ++j) {
+        auto& pt = cloud->points[static_cast<size_t>(j)];
+        pt.x = static_cast<float>(j % 20) * 0.5f - 5.0f;
+        pt.y = static_cast<float>(j / 20) * 0.5f - 2.5f;
+        pt.z = -1.5f;
+        pt.intensity = 100.0f;
+        pt.dt_ns = 0;
+    }
+    engine.feedPointCloud(cloud);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // Verify refiner has processed at least one frame before reset
+    SlamOutput pre;
+    bool had_output = engine.getLatestOutput(pre);
+    if (had_output) {
+        assert(pre.refine_frame_count > 0);
+    }
+
+    // Reset and verify refiner state returns to defaults
     engine.reset();
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+    // Feed fresh IMU + cloud after reset
+    for (int i = 0; i < 300; ++i) {
+        odom::ImuSample imu{};
+        imu.timestamp_ns = static_cast<int64_t>(2'000'000'000LL + i * 5'000'000LL);
+        imu.accel = {0.0, 0.0, -9.81};
+        imu.gyro  = {0.0, 0.0, 0.0};
+        engine.feedImu(imu);
+    }
+
+    auto cloud2 = std::make_shared<PointCloudFrame>();
+    cloud2->timestamp_ns = 2'000'000'000LL + 300 * 5'000'000LL;
+    cloud2->sequence     = 1;
+    cloud2->is_deskewed  = false;
+    cloud2->points.resize(200);
+    for (int j = 0; j < 200; ++j) {
+        auto& pt = cloud2->points[static_cast<size_t>(j)];
+        pt.x = static_cast<float>(j % 20) * 0.5f - 5.0f;
+        pt.y = static_cast<float>(j / 20) * 0.5f - 2.5f;
+        pt.z = -1.5f;
+        pt.intensity = 100.0f;
+        pt.dt_ns = 0;
+    }
+    engine.feedPointCloud(cloud2);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // After reset, frame_count should have restarted (≤ 1 post-reset scan)
+    SlamOutput post;
+    if (engine.getLatestOutput(post)) {
+        assert(post.refine_frame_count <= 1);
+    }
 
     engine.shutdown();
     std::puts("  reset clears refiner state              OK");

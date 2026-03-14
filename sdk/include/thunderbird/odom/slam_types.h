@@ -41,6 +41,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <array>
 #include <memory>
 #include <span>
 #include <vector>
@@ -346,6 +347,28 @@ enum class ProfileModule : uint8_t {
 
 constexpr size_t kProfileModuleCount =
     static_cast<size_t>(ProfileModule::Count_);
+
+/// Human-readable name for a ProfileModule value.
+inline const char* profile_module_name(ProfileModule module) noexcept {
+    // Names must stay in sync with the order of ProfileModule.
+    static constexpr std::array<const char*, kProfileModuleCount> kModuleNames
+        = {{
+        "imu_propagate",    // ProfileModule::ImuPropagate
+        "deskew",           // ProfileModule::Deskew
+        "esikf_update",     // ProfileModule::EsikfUpdate
+        "ikd_insert",       // ProfileModule::IkdInsert
+        "ikd_rebalance",    // ProfileModule::IkdRebalance
+        "scan_total",       // ProfileModule::ScanTotal
+        "worker_idle",      // ProfileModule::WorkerIdle
+        "online_refine",    // ProfileModule::OnlineRefine
+    }};
+
+    const auto idx = static_cast<size_t>(module);
+    if (idx >= kModuleNames.size()) {
+        return "Unknown";
+    }
+    return kModuleNames[idx];
+}
 
 /// Per-module timing statistics.
 struct ModuleProfile {
